@@ -3,7 +3,7 @@
 restrictedRepos:
   # You can exclude certain repos from safe-settings processing
   #  If no file is specified, then the following repositories - 'admin', '.github', 'safe-settings' are exempted by default
-  exclude: ['.github', 'safe-settings']
+  exclude: ['^.github$', '^safe-settings$', '.*-test$', '^personal-.*$']
   # Alternatively you can only include certain repos
   #include: ['test']
 
