@@ -21,12 +21,12 @@ configvalidators:
 overridevalidators:
   - plugin: branches
     error: |
-      `Branch protection required_approving_review_count cannot be overidden to a lower value`
+      `Branch protection required_approving_review_count cannot be set to zero`
     script: |
       console.log(`validator.branches: baseConfig ${JSON.stringify(baseconfig)}`)
       console.log(`validator.branches: overrideConfig ${JSON.stringify(overrideconfig)}`)
-      if (baseconfig?.protection?.required_pull_request_reviews?.required_approving_review_count && overrideconfig?.protection?.required_pull_request_reviews?.required_approving_review_count ) {
-        return overrideconfig.protection.required_pull_request_reviews.required_approving_review_count >= baseconfig.protection.required_pull_request_reviews.required_approving_review_count
+      if (overrideconfig?.protection?.required_pull_request_reviews?.required_approving_review_count) {
+        return overrideconfig.protection.required_pull_request_reviews.required_approving_review_count >= 1
       }
       return true
   - plugin: repository
