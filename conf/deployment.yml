@@ -23,8 +23,9 @@ overridevalidators:
     error: |
       `Branch protection required_approving_review_count cannot be set to zero`
     script: |
-      console.log(`validator.branches: baseConfig ${JSON.stringify(baseconfig)}`)
-      console.log(`validator.branches: overrideConfig ${JSON.stringify(overrideconfig)}`)
+      console.log(`overridevalidators.branches: baseConfig ${JSON.stringify(baseconfig)}`)
+      console.log(`overridevalidators.branches: overrideConfig ${JSON.stringify(overrideconfig)}`)
+
       if (overrideconfig?.protection?.required_pull_request_reviews?.required_approving_review_count) {
         return overrideconfig.protection.required_pull_request_reviews.required_approving_review_count >= 1
       }
