@@ -244,23 +244,26 @@ module.exports = (robot, _, Settings = require('./lib/settings')) => {
       return commit.added.includes(Settings.FILE_NAME) ||
         commit.modified.includes(Settings.FILE_NAME)
     })
+    log.debug('Org settings changes: %o', settingsModified)
     if (settingsModified) {
-      log.debug(`Changes in '${Settings.FILE_NAME}' detected, doing a full synch...`)
+      log.debug('Changes in %s detected, doing a full synch...', Settings.FILE_NAME)
       return syncAllSettings(false, context)
     }
 
     const repoChanges = getAllChangedRepoConfigs(payload, context.repo().owner)
+    log.debug('Repo setting changes: %o', repoChanges)
     if (repoChanges.length > 0) {
       return Promise.all(repoChanges.map(repo => {
-        log.debug(`Changes in '${repo}' detected, doing a repo sync...`)
+        log.debug('Changes in %o detected, doing a repo sync...', repo)
         return syncSettings(false, context, repo)
       }))
     }
 
     const changes = getAllChangedSubOrgConfigs(payload)
+    log.debug('Suborg setting changes: %o', repoChanges)
     if (changes.length) {
       return Promise.all(changes.map(suborg => {
-        log.debug(`Changes in '${suborg}' detected, doing a suborg sync...`)
+        log.debug('Changes in %o detected, doing a suborg sync...', suborg)
         return syncSubOrgSettings(false, context, suborg)
       }))
     }
