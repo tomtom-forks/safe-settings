@@ -106,7 +106,7 @@ services:
     restart: always
 
   proxy:
-    image: traefik:v2.9
+    image: traefik:v2.10.3
     command:
       - "--log.level=DEBUG"
       - "--api.insecure=true"
@@ -133,7 +133,7 @@ services:
     restart: always
 
   scalyr:
-    image: scalyr/scalyr-agent-docker-json:2.1.37-alpine
+    image: scalyr/scalyr-agent-docker-json:2.2.4-alpine
     depends_on:
       - proxy
     environment:
