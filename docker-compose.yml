@@ -73,12 +73,15 @@ services:
       - probot
     logging: *default-logging
     restart: always
+    profiles:
+      - cron
 
   probot_event:
     image: safe-settings
     build: .
     environment:
       <<: *probot-environment
+      CRON: "${CRON}"
       GH_ORG: ${GH_ORG}
       APP_ID: ${PROBOT_EVENT_APP_ID}
       PRIVATE_KEY: ${PROBOT_EVENT_PRIVATE_KEY}
