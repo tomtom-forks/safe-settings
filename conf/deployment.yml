@@ -5,11 +5,12 @@ restrictedRepos:
   #  If no file is specified, then the following repositories - 'admin', '.github', 'safe-settings' are exempted by default
   exclude:
     - '^.github$'
-    - '^fork-.*$'
+    - '^fork(ed)*-.*$'
     - '^hackathon-.*$'
     - '^personal-.*$'
     - '^safe-settings$'
     - '^ttlab-.*$'
+    - '.*-fork(ed)*$'
     - '.*-personal$'
     - '.*-test$'
     - '.*-trial$'
