@@ -109,7 +109,7 @@ services:
     restart: always
 
   proxy:
-    image: traefik:v2.10.3
+    image: traefik:v3.0
     command:
       - "--log.level=DEBUG"
       - "--api.insecure=true"
