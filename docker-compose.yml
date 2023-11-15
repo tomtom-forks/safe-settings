@@ -117,8 +117,9 @@ services:
       - "--api.debug=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=probot"
+      - "--providers.docker.network=safe-settings_probot"
       - "--entrypoints.web.address=:80"
+      - "--ping=true"
     ports:
       - 80:80
       - 8080:8080
