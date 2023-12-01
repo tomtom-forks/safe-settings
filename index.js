@@ -256,7 +256,10 @@ module.exports = (robot, _, Settings = require('./lib/settings')) => {
       return Promise.all(repoChanges.map(repo => {
         log.debug('Changes in %o detected, doing a repo sync...', repo)
         return syncSettings(false, context, repo)
-      }))
+      })).catch(e => {
+        log.error(e)
+        return
+      })
     }
 
     const changes = getAllChangedSubOrgConfigs(payload)
@@ -454,7 +457,10 @@ module.exports = (robot, _, Settings = require('./lib/settings')) => {
     if (repoChanges.length > 0) {
       return Promise.all(repoChanges.map(repo => {
         return syncSettings(true, context, repo, pull_request.head.ref)
-      }))
+      })).catch(e => {
+        log.error(e)
+        return
+      })
     }
 
     const subOrgChanges = getChangedSubOrgConfigName(new Glob('.github/suborgs/*.yml'), files, context.repo().owner)
