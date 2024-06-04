@@ -12,13 +12,14 @@ let deploymentConfig
 module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) => {
   let appSlug = 'safe-settings'
   async function syncAllSettings (nop, context, repo = context.repo(), ref) {
+    const log = robot.log.child({ context: 'index', repository: repo.repo })
     try {
       deploymentConfig = await loadYamlFileSystem()
       robot.log.debug(`deploymentConfig is ${JSON.stringify(deploymentConfig)}`)
       const configManager = new ConfigManager(context, ref)
       const runtimeConfig = await configManager.loadGlobalSettingsYaml()
       const config = Object.assign({}, deploymentConfig, runtimeConfig)
-      robot.log.debug(`config for ref ${ref} is ${JSON.stringify(config)}`)
+      log.debug(`config for ref ${ref} is ${JSON.stringify(config)}`)
       if (ref) {
         return Settings.syncAll(nop, context, repo, config, ref)
       } else {
@@ -32,7 +33,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
           deploymentConfig = {}
         }
         const nopcommand = new NopCommand(filename, repo, null, e, 'ERROR')
-        robot.log.error(`NOPCOMMAND ${JSON.stringify(nopcommand)}`)
+        log.error(`NOPCOMMAND ${JSON.stringify(nopcommand)}`)
         Settings.handleError(nop, context, repo, deploymentConfig, ref, nopcommand)
       } else {
         throw e
@@ -41,13 +42,14 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
   }
 
   async function syncSubOrgSettings (nop, context, suborg, repo = context.repo(), ref) {
+    const log = robot.log.child({ context: 'index', suborg, repository: repo.repo })
     try {
       deploymentConfig = await loadYamlFileSystem()
-      robot.log.debug(`deploymentConfig is ${JSON.stringify(deploymentConfig)}`)
+      log.debug(`deploymentConfig is ${JSON.stringify(deploymentConfig)}`)
       const configManager = new ConfigManager(context, ref)
       const runtimeConfig = await configManager.loadGlobalSettingsYaml()
       const config = Object.assign({}, deploymentConfig, runtimeConfig)
-      robot.log.debug(`config for ref ${ref} is ${JSON.stringify(config)}`)
+      log.debug(`config for ref ${ref} is ${JSON.stringify(config)}`)
       return Settings.syncSubOrgs(nop, context, suborg, repo, config, ref)
     } catch (e) {
       if (nop) {
@@ -57,7 +59,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
           deploymentConfig = {}
         }
         const nopcommand = new NopCommand(filename, repo, null, e, 'ERROR')
-        robot.log.error(`NOPCOMMAND ${JSON.stringify(nopcommand)}`)
+        log.error(`NOPCOMMAND ${JSON.stringify(nopcommand)}`)
         Settings.handleError(nop, context, repo, deploymentConfig, ref, nopcommand)
       } else {
         throw e
@@ -66,13 +68,14 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
   }
 
   async function syncSettings (nop, context, repo = context.repo(), ref) {
+    const log = robot.log.child({ context: 'index', repository: repo.repo })
     try {
       deploymentConfig = await loadYamlFileSystem()
-      robot.log.debug(`deploymentConfig is ${JSON.stringify(deploymentConfig)}`)
+      log.debug(`deploymentConfig is ${JSON.stringify(deploymentConfig)}`)
       const configManager = new ConfigManager(context, ref)
       const runtimeConfig = await configManager.loadGlobalSettingsYaml()
       const config = Object.assign({}, deploymentConfig, runtimeConfig)
-      robot.log.debug(`config for ref ${ref} is ${JSON.stringify(config)}`)
+      log.debug(`config for ref ${ref} is ${JSON.stringify(config)}`)
       return Settings.sync(nop, context, repo, config, ref)
     } catch (e) {
       if (nop) {
@@ -82,7 +85,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
           deploymentConfig = {}
         }
         const nopcommand = new NopCommand(filename, repo, null, e, 'ERROR')
-        robot.log.error(`NOPCOMMAND ${JSON.stringify(nopcommand)}`)
+        log.error(`NOPCOMMAND ${JSON.stringify(nopcommand)}`)
         Settings.handleError(nop, context, repo, deploymentConfig, ref, nopcommand)
       } else {
         throw e
@@ -91,9 +94,10 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
   }
 
   async function renameSync (nop, context, repo = context.repo(), rename, ref) {
+    const log = robot.log.child({ context: 'index', repository: repo.repo })
     try {
       deploymentConfig = await loadYamlFileSystem()
-      robot.log.debug(`deploymentConfig is ${JSON.stringify(deploymentConfig)}`)
+      log.debug(`deploymentConfig is ${JSON.stringify(deploymentConfig)}`)
       const configManager = new ConfigManager(context, ref)
       const runtimeConfig = await configManager.loadGlobalSettingsYaml()
       const config = Object.assign({}, deploymentConfig, runtimeConfig)
@@ -108,7 +112,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
           deploymentConfig = {}
         }
         const nopcommand = new NopCommand(filename, repo, null, e, 'ERROR')
-        robot.log.error(`NOPCOMMAND ${JSON.stringify(nopcommand)}`)
+        log.error(`NOPCOMMAND ${JSON.stringify(nopcommand)}`)
         Settings.handleError(nop, context, repo, deploymentConfig, ref, nopcommand)
       } else {
         throw e
@@ -189,6 +193,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     }))
   }
   async function createCheckRun (context, pull_request, head_sha, head_branch) {
+    const log = robot.log.child({ context: 'index' })
     const { payload } = context
     // robot.log.debug(`Check suite was requested! for ${context.repo()} ${pull_request.number} ${head_sha} ${head_branch}`)
     const res = await context.octokit.checks.create({
@@ -197,7 +202,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
       name: 'Safe-setting validator',
       head_sha
     })
-    robot.log.debug(JSON.stringify(res, null))
+    log.debug(JSON.stringify(res, null))
   }
 
   async function info () {
@@ -205,13 +210,13 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const installations = await github.paginate(
       github.apps.listInstallations.endpoint.merge({ per_page: 100 })
     )
-    robot.log.debug(`installations: ${JSON.stringify(installations)}`)
+    log.debug(`installations: ${JSON.stringify(installations)}`)
     if (installations.length > 0) {
       const installation = installations[0]
       const github = await robot.auth(installation.id)
       const app = await github.apps.getAuthenticated()
       appSlug = app.data.slug
-      robot.log.debug(`Validated the app is configured properly = \n${JSON.stringify(app.data, null, 2)}`)
+      log.debug(`Validated the app is configured properly = \n${JSON.stringify(app.data, null, 2)}`)
     }
   }
 
@@ -242,6 +247,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
   robot.on('push', async context => {
     const { payload } = context
     const { repository } = payload
+    const log = robot.log.child({ context: 'index', event: 'push', repository: repository.name })
 
     const adminRepo = repository.name === env.ADMIN_REPO
     if (!adminRepo) {
@@ -250,7 +256,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
 
     const defaultBranch = payload.ref === 'refs/heads/' + repository.default_branch
     if (!defaultBranch) {
-      robot.log.debug('Not working on the default branch, returning...')
+      log.debug('Not working on the default branch, returning...')
       return
     }
 
@@ -281,16 +287,17 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
   })
 
   robot.on('create', async context => {
+    const log = robot.log.child({ context: 'index', event: 'create' })
     const { payload } = context
     const { sender } = payload
-    robot.log.debug('Branch Creation by ', JSON.stringify(sender))
+    log.debug('Branch Creation by ', JSON.stringify(sender))
     if (sender.type === 'Bot') {
-      robot.log.debug('Branch Creation by Bot')
+      log.debug('Branch Creation by Bot')
       return
     }
-    robot.log.debug('Branch Creation by a Human')
+    log.debug('Branch Creation by a Human')
     if (payload.repository.default_branch !== payload.ref) {
-      robot.log.debug('Not default Branch')
+      log.debug('Not default Branch')
       return
     }
 
@@ -299,38 +306,41 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
 
   robot.on('branch_protection_rule', async context => {
     const { payload } = context
-    const { sender } = payload
-    robot.log.debug('Branch Protection edited by ', JSON.stringify(sender))
+    const { sender, repository } = payload
+    const log = robot.log.child({ context: 'index', event: 'branch_protection_rule', repository: repository.name })
+    log.debug('Branch Protection edited by ', JSON.stringify(sender))
     if (sender.type === 'Bot') {
-      robot.log.debug('Branch Protection edited by Bot')
+      log.debug('Branch Protection edited by Bot')
       return
     }
-    robot.log.debug('Branch Protection edited by a Human')
+    log.debug('Branch Protection edited by a Human')
     return syncSettings(false, context)
   })
 
   robot.on('custom_property_values', async context => {
     const { payload } = context
-    const { sender } = payload
-    robot.log.debug('Custom Property Value Updated for a repo by ', JSON.stringify(sender))
+    const { sender, repository } = payload
+    const log = robot.log.child({ context: 'index', event: 'custom_property_values', repository: repository.name })
+    log.debug('Custom Property Value Updated for a repo by ', JSON.stringify(sender))
     if (sender.type === 'Bot') {
-      robot.log.debug('Custom Property Value edited by Bot')
+      log.debug('Custom Property Value edited by Bot')
       return
     }
-    robot.log.debug('Custom Property Value edited by a Human')
+    log.debug('Custom Property Value edited by a Human')
     return syncSettings(false, context)
   })
 
   robot.on('repository_ruleset', async context => {
     const { payload } = context
-    const { sender } = payload
-    robot.log.debug('Repository Ruleset edited by ', JSON.stringify(sender))
+    const { sender, repository } = payload
+    const log = robot.log.child({ context: 'index', event: 'repository_ruleset', repository: repository.name })
+    log.debug('Repository Ruleset edited by ', JSON.stringify(sender))
     if (sender.type === 'Bot') {
-      robot.log.debug('Repository Ruleset edited by Bot')
+      log.debug('Repository Ruleset edited by Bot')
       return
     }
 
-    robot.log.debug('Repository Repository edited by a Human')
+    log.debug('Repository Repository edited by a Human')
     if (payload.repository_ruleset.source_type === 'Organization') {
       // For org-level events, we need to update the context since context.repo() won't work
       const updatedContext = Object.assign({}, context, {
@@ -352,25 +362,27 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
   robot.on(member_change_events, async context => {
     const { payload } = context
     const { sender } = payload
-    robot.log.debug('Repository member edited by ', JSON.stringify(sender))
+    const log = robot.log.child({ context: 'index', event: 'member_change_events', repository: repository.name })
+    log.debug('Repository member edited by ', JSON.stringify(sender))
     if (sender.type === 'Bot') {
-      robot.log.debug('Repository member edited by Bot')
+      log.debug('Repository member edited by Bot')
       return
     }
-    robot.log.debug('Repository member edited by a Human')
+    log.debug('Repository member edited by a Human')
     return syncSettings(false, context)
   })
 
   robot.on('repository.edited', async context => {
     const { payload } = context
-    const { sender } = payload
-    robot.log.debug('repository.edited payload from ', JSON.stringify(sender))
+    const { sender, repository } = payload
+    const log = robot.log.child({ context: 'index', event: 'repository.edited', repository: repository.name })
+    log.debug('repository.edited payload from ', JSON.stringify(sender))
 
     if (sender.type === 'Bot') {
-      robot.log.debug('Repository Edited by a Bot')
+      log.debug('Repository Edited by a Bot')
       return
     }
-    robot.log.debug('Repository Edited by a Human')
+    log.debug('Repository Edited by a Human')
 
     return syncSettings(false, context)
   })
@@ -382,18 +394,19 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     }
     const { payload } = context
     const { sender } = payload
+    const log = robot.log.child({ context: 'index', event: 'repository.renamed', repository: repository.name })
 
-    robot.log.debug(`repository renamed from ${payload.changes.repository.name.from} to ${payload.repository.name} by ', ${sender.login}`)
+    log.debug(`repository renamed from ${payload.changes.repository.name.from} to ${payload.repository.name} by ', ${sender.login}`)
 
     if (sender.type === 'Bot') {
-      robot.log.debug('Repository Edited by a Bot')
+      log.debug('Repository Edited by a Bot')
       if (sender.login === `${appSlug}[bot]`) {
-        robot.log.debug('Renamed by safe-settings app')
+        log.debug('Renamed by safe-settings app')
         return
       }
       const oldPath = `.github/repos/${payload.changes.repository.name.from}.yml`
       const newPath = `.github/repos/${payload.repository.name}.yml`
-      robot.log.debug(oldPath)
+      log.debug(oldPath)
       try {
         const repofile = await context.octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
           owner: payload.repository.owner.login,
@@ -404,7 +417,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
           }
         })
         let content = Buffer.from(repofile.data.content, 'base64').toString()
-        robot.log.debug(content)
+        log.debug(content)
         content = `# Repo Renamed and safe-settings renamed the file from ${payload.changes.repository.name.from} to ${payload.repository.name}\n# change the repo name in the config for consistency\n\n${content}`
         content = Buffer.from(content).toString('base64')
         try {
@@ -432,9 +445,9 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
                 'X-GitHub-Api-Version': '2022-11-28'
               }
             })
-            robot.log.debug(`Created a new setting file ${newPath}`)
+            log.debug(`Created a new setting file ${newPath}`)
           } else {
-            robot.log.error(error)
+            log.error(error)
           }
         }
       } catch (error) {
@@ -445,7 +458,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
         }
       }
     } else {
-      robot.log.debug('Repository Edited by a Human')
+      log.debug('Repository Edited by a Human')
       // Create a repository config to reset the name back to the previous name
       const rename = { repository: { name: payload.changes.repository.name.from, oldname: payload.repository.name } }
       const repo = { repo: payload.changes.repository.name.from, owner: payload.repository.owner.login }
@@ -456,15 +469,16 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
   robot.on('check_suite.requested', async context => {
     const { payload } = context
     const { repository } = payload
+    const log = robot.log.child({ context: 'index', event: 'check_suite.requested', repository: repository.name })
     const adminRepo = repository.name === env.ADMIN_REPO
-    robot.log.debug(`Is Admin repo event ${adminRepo}`)
+    log.debug(`Is Admin repo event ${adminRepo}`)
     if (!adminRepo) {
-      robot.log.debug('Not working on the Admin repo, returning...')
+      log.debug('Not working on the Admin repo, returning...')
       return
     }
     const defaultBranch = payload.check_suite.head_branch === repository.default_branch
     if (defaultBranch) {
-      robot.log.debug(' Working on the default branch, returning...')
+      log.debug(' Working on the default branch, returning...')
       return
     }
     const {
@@ -474,7 +488,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     } = context.payload.check_suite
 
     if (!Array.isArray(pullRequests) || !pullRequests[0]) {
-      robot.log.debug('Not working on a PR, returning...')
+      log.debug('Not working on a PR, returning...')
       return
     }
     const pull_request = payload.check_suite.pull_requests[0]
@@ -485,15 +499,16 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     robot.log.debug('Pull_request opened !')
     const { payload } = context
     const { repository } = payload
+    const log = robot.log.child({ context: 'index', event: 'pull_request.opened', repository: repository.name })
     const adminRepo = repository.name === env.ADMIN_REPO
-    robot.log.debug(`Is Admin repo event ${adminRepo}`)
+    log.debug(`Is Admin repo event ${adminRepo}`)
     if (!adminRepo) {
-      robot.log.debug('Not working on the Admin repo, returning...')
+      log.debug('Not working on the Admin repo, returning...')
       return
     }
     const defaultBranch = payload.pull_request.head_branch === repository.default_branch
     if (defaultBranch) {
-      robot.log.debug(' Working on the default branch, returning...')
+      log.debug(' Working on the default branch, returning...')
       return
     }
     const pull_request = payload.pull_request
@@ -504,18 +519,19 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     robot.log.debug('Pull_request REopened !')
     const { payload } = context
     const { repository } = payload
+    const log = robot.log.child({ context: 'index', event: 'pull_request.reopened', repository: repository.name })
     const pull_request = payload.pull_request
     const adminRepo = repository.name === env.ADMIN_REPO
 
-    robot.log.debug(`Is Admin repo event ${adminRepo}`)
+    log.debug(`Is Admin repo event ${adminRepo}`)
     if (!adminRepo) {
-      robot.log.debug('Not working on the Admin repo, returning...')
+      log.debug('Not working on the Admin repo, returning...')
       return
     }
 
     const defaultBranch = payload.pull_request.head_branch === repository.default_branch
     if (defaultBranch) {
-      robot.log.debug(' Working on the default branch, returning...')
+      log.debug(' Working on the default branch, returning...')
       return
     }
     return createCheckRun(context, pull_request, payload.pull_request.head.sha, payload.pull_request.head.ref)
@@ -535,29 +551,30 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     robot.log.debug('Check run was created!')
     const { payload } = context
     const { repository } = payload
+    const log = robot.log.child({ context: 'index', event: 'check_run.created', repository: repository.name })
     const { check_run } = payload
     const { check_suite } = check_run
     const pull_request = check_suite.pull_requests[0]
     const source = payload.check_run.name === 'Safe-setting validator'
     if (!source) {
-      robot.log.debug(' Not triggered by Safe-settings...')
+      log.debug(' Not triggered by Safe-settings...')
       return
     }
 
     if (check_run.status === 'completed') {
-      robot.log.debug(' Checkrun created as completed, returning')
+      log.debug(' Checkrun created as completed, returning')
       return
     }
 
     const adminRepo = repository.name === env.ADMIN_REPO
-    robot.log.debug(`Is Admin repo event ${adminRepo}`)
+    log.debug(`Is Admin repo event ${adminRepo}`)
     if (!adminRepo) {
-      robot.log.debug('Not working on the Admin repo, returning...')
+      log.debug('Not working on the Admin repo, returning...')
       return
     }
 
     if (!pull_request) {
-      robot.log.debug('Not working on a PR, returning...')
+      log.debug('Not working on a PR, returning...')
       return
     }
 
@@ -569,7 +586,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
       started_at: new Date().toISOString(),
       output: { title: 'Starting NOP', summary: 'initiating...' }
     }
-    robot.log.debug(`Updating check run ${JSON.stringify(params)}`)
+    log.debug(`Updating check run ${JSON.stringify(params)}`)
     await context.octokit.checks.update(params)
 
     // guarding against null value from upstream libary that is
@@ -613,14 +630,15 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
       conclusion: 'success',
       output: { title: 'No Safe-settings changes detected', summary: 'No changes detected' }
     }
-    robot.log.debug(`Completing check run ${JSON.stringify(params)}`)
+    log.debug(`Completing check run ${JSON.stringify(params)}`)
     await context.octokit.checks.update(params)
   })
 
   robot.on('repository.created', async context => {
     const { payload } = context
-    const { sender } = payload
-    robot.log.debug('repository.created payload from ', JSON.stringify(sender))
+    const { sender, repository } = payload
+    const log = robot.log.child({ context: 'index', event: 'repository.created', repository: repository.name })
+    log.debug('repository.created payload from ', JSON.stringify(sender))
     return syncSettings(false, context)
   })
 
@@ -637,7 +655,8 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     # * * * * * *
     */
     cron.schedule(process.env.CRON, () => {
-      robot.log.debug('running a task every minute')
+      const log = robot.log.child({ event: 'cron' })
+      log.debug('running a task every minute')
       syncInstallation()
     })
   }
