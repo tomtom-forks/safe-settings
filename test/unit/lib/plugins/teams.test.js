@@ -15,7 +15,7 @@ describe('Teams', () => {
   const org = 'bkeepers'
 
   function configure (config) {
-    const log = { debug: jest.fn(), error: console.error }
+    const log = { child: jest.fn(), debug: jest.fn(), error: console.error }
     const errors = []
     return new Teams(undefined, github, { owner: 'bkeepers', repo: 'test' }, config, log, errors)
   }

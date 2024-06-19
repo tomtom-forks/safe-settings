@@ -21,17 +21,7 @@ describe('Settings Tests', () => {
         }
       },
       octokit: jest.fn(),
-      log: {
-        debug: jest.fn((msg) => {
-          console.log(msg)
-        }),
-        info: jest.fn((msg) => {
-          console.log(msg)
-        }),
-        error: jest.fn((msg) => {
-          console.log(msg)
-        })
-      }
+      log: require('pino')()
     }
 
     mockRepo = jest.fn()
