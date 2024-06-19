@@ -227,7 +227,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
   }
 
   async function info() {
-    const log = robot.log.child({ context: 'index', repository: repo.repo })
+    const log = robot.log.child({ context: 'index' })
     const github = await robot.auth()
     const installations = await github.paginate(
       github.apps.listInstallations.endpoint.merge({ per_page: 100 })
