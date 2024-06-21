@@ -6,7 +6,8 @@ describe('Labels', () => {
 
   function configure(config) {
     const nop = false;
-    return new Labels(nop, github, { owner: 'bkeepers', repo: 'test' }, config, log)
+    const errors = []
+    return new Labels(nop, github, { owner: 'bkeepers', repo: 'test' }, config, log, errors)
   }
 
   beforeEach(() => {
@@ -26,7 +27,7 @@ describe('Labels', () => {
         updateLabel: jest.fn().mockImplementation(() => Promise.resolve())
       }
     }
-    log = { debug: jest.fn(), error: console.error }
+    log = { child: jest.fn(), debug: jest.fn(), error: console.error }
   })
 
   describe('sync', () => {

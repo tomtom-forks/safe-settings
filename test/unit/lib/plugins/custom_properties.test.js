@@ -20,7 +20,7 @@ describe('CustomProperties', () => {
             //     ]
             // })
         }
-        log = { debug: jest.fn(), error: console.error }
+        log = { child: jest.fn(), debug: jest.fn(), error: console.error }
     })
 
     describe('sync', () => {

@@ -6,6 +6,7 @@ const Branches = require('../../../../lib/plugins/branches')
 describe('Branches', () => {
   let github
   const log = jest.fn()
+  log.child = jest.fn()
   log.debug = jest.fn()
   log.error = jest.fn()
 
@@ -65,7 +66,9 @@ describe('Branches', () => {
           required_pull_request_reviews: {
             require_code_owner_reviews: true
           },
-          headers: { accept: 'application/vnd.github.hellcat-preview+json,application/vnd.github.luke-cage-preview+json,application/vnd.github.zzzax-preview+json' }
+          headers: { accept: 'application/vnd.github.hellcat-preview+json,application/vnd.github.luke-cage-preview+json,application/vnd.github.zzzax-preview+json' },
+          required_linear_history: undefined,
+          restrictions: null,
         })
       })
     })
@@ -192,12 +195,15 @@ describe('Branches', () => {
         return plugin.sync().then(() => {
           expect(github.repos.updateBranchProtection).toHaveBeenCalledTimes(2)
 
-          expect(github.repos.updateBranchProtection).toHaveBeenLastCalledWith({
+           expect(github.repos.updateBranchProtection).toHaveBeenLastCalledWith({
             owner: 'bkeepers',
             repo: 'test',
             branch: 'other',
             enforce_admins: false,
-            headers: { accept: 'application/vnd.github.hellcat-preview+json,application/vnd.github.luke-cage-preview+json,application/vnd.github.zzzax-preview+json' }
+            headers: { accept: 'application/vnd.github.hellcat-preview+json,application/vnd.github.luke-cage-preview+json,application/vnd.github.zzzax-preview+json' },
+            required_linear_history: undefined,
+            required_status_checks: null,
+            restrictions: null,
           })
         })
       })
