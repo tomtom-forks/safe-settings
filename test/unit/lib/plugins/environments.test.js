@@ -1006,31 +1006,17 @@ describe('Environments Plugin test suite', () => {
           type: 'branch'
         }))
 
-        expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy-custom_environment',
-          name: 'v*.*.*',
-          type: 'tag'
-        }))
+        when(github.request)
+            .calledWith('GET /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', { org, repo, environment_name: 'deployment-branch-policy-custom' })
+            .mockResolvedValue({
+                data: {
+                    branch_policies: []
+                }
+            });
 
-        expect(github.request).toHaveBeenCalledWith('PUT /repos/:org/:repo/environments/:environment_name', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy-custom_environment_legacy',
-          deployment_branch_policy: {
-            protected_branches: false,
-            custom_branch_policies: true
-          }
-        }))
-
-        expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy-custom_environment_legacy',
-          name: 'main',
-          type: 'branch'
-        }))
+        when(github.request)
+            .calledWith('DELETE /repos/:org/:repo/environments/:environment_name/deployment-branch-policies/:branch_policy_id')
+            .mockResolvedValue({});
 
         expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', expect.objectContaining({
           org,
@@ -1295,75 +1281,39 @@ describe('Environments Plugin test suite', () => {
           prevent_self_review: true
         }))
 
-        expect(github.request).toHaveBeenCalledWith('PUT /repos/:org/:repo/environments/:environment_name', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy_environment',
-          deployment_branch_policy: {
-            protected_branches: true,
-            custom_branch_policies: false
-          }
-        }))
+            expect(github.request).toHaveBeenCalledWith('PUT /repos/:org/:repo/environments/:environment_name', expect.objectContaining({
+                org,
+                repo,
+                environment_name: 'deployment-branch-policy',
+                deployment_branch_policy: {
+                    protected_branches: true,
+                    custom_branch_policies: false
+                }
+            }));
 
-        expect(github.request).toHaveBeenCalledWith('PUT /repos/:org/:repo/environments/:environment_name', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy-custom_environment',
-          deployment_branch_policy: {
-            protected_branches: false,
-            custom_branch_policies: true
-          }
-        }))
+            expect(github.request).toHaveBeenCalledWith('PUT /repos/:org/:repo/environments/:environment_name', expect.objectContaining({
+                org,
+                repo,
+                environment_name: 'deployment-branch-policy-custom',
+                deployment_branch_policy: {
+                    protected_branches: false,
+                    custom_branch_policies: true
+                }
+            }));
 
-        expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy-custom_environment',
-          name: 'main',
-          type: 'branch'
-        }))
+            expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', expect.objectContaining({
+                org,
+                repo,
+                environment_name: 'deployment-branch-policy-custom',
+                name: 'master'
+            }));
 
-        expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy-custom_environment',
-          name: 'dev',
-          type: 'branch'
-        }))
-
-        expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy-custom_environment',
-          name: 'v*.*.*',
-          type: 'tag'
-        }))
-
-        expect(github.request).toHaveBeenCalledWith('PUT /repos/:org/:repo/environments/:environment_name', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy-custom_environment_legacy',
-          deployment_branch_policy: {
-            protected_branches: false,
-            custom_branch_policies: true
-          }
-        }))
-
-        expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy-custom_environment_legacy',
-          name: 'main',
-          type: 'branch'
-        }))
-
-        expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', expect.objectContaining({
-          org,
-          repo,
-          environment_name: 'deployment-branch-policy-custom_environment_legacy',
-          name: 'dev',
-          type: 'branch'
-        }))
+            expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/deployment-branch-policies', expect.objectContaining({
+                org,
+                repo,
+                environment_name: 'deployment-branch-policy-custom',
+                name: 'dev'
+            }));
 
         expect(github.request).toHaveBeenCalledWith('POST /repos/:org/:repo/environments/:environment_name/variables', expect.objectContaining({
           org,

@@ -80,7 +80,7 @@ restrictedRepos:
     - test-*    # Matches `test-repo`, etc.
 
 # Or using simple array syntax for includes
-restrictedRepos: 
+restrictedRepos:
   - admin
   - .github
   # ...
@@ -359,7 +359,7 @@ See [`docs/sample-settings/settings.yml`](docs/sample-settings/settings.yml) for
 > When using `collaborators`, `teams` or `labels`, you can control which repositories they apply to using `include` and `exclude`:
 >
 > - If `include` is specified, settings will **only** apply to repositories that match those patterns
-> - If `exclude` is specified, settings will apply to all repositories **except** those matching the patterns  
+> - If `exclude` is specified, settings will apply to all repositories **except** those matching the patterns
 > - If both are specified, `exclude` takes precedence over `include` but `include` patterns will still be respected
 >
 > Pattern matching uses glob expressions, e.g use * for wildcards. For example:

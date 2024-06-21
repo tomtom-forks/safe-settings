@@ -4,8 +4,9 @@ describe('Collaborators', () => {
   let github
 
   function configure (config) {
-    const log = { debug: jest.fn(), error: console.error }
-    return new Collaborators(undefined, github, { owner: 'bkeepers', repo: 'test' }, config, log)
+    const log = { child: jest.fn(), debug: jest.fn(), error: console.error }
+    const errors = []
+    return new Collaborators(undefined, github, { owner: 'bkeepers', repo: 'test' }, config, log, errors)
   }
 
   beforeEach(() => {
