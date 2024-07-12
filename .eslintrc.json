@@ -11,6 +11,10 @@
         "ecmaVersion": 12
     },
     "rules": {
+      "space-before-function-paren": "off",
+      "camelcase": "off",
+      "prefer-const": "off",
+      "quotes": "off"
     },
     "ignorePatterns": ["test/**/*.js"]
 }
