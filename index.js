@@ -9,7 +9,6 @@ const env = require('./lib/env')
 
 let deploymentConfig
 
-
 module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) => {
   let appName = 'safe-settings'
   let appSlug = 'safe-settings'
@@ -105,7 +104,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
       const config = Object.assign({}, deploymentConfig, runtimeConfig)
       const renameConfig = Object.assign({}, config, rename)
       log.debug(`config for ref ${ref} is ${JSON.stringify(config)}`)
-      return Settings.sync(nop, context, repo, renameConfig, ref )
+      return Settings.sync(nop, context, repo, renameConfig, ref)
     } catch (e) {
       if (nop) {
         let filename = env.SETTINGS_FILE_PATH
@@ -201,7 +200,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
   }
 
   function getChangedSubOrgConfigName (glob, files) {
-    const log = robot.log.child({ context: 'index', repository: repo.repo })
+    const log = robot.log.child({ context: 'index' })
     const modifiedFiles = files.filter(s => {
       log.debug(JSON.stringify(s))
       return (s.search(glob) >= 0)
@@ -242,7 +241,6 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
       log.debug(`Validated the app is configured properly = \n${JSON.stringify(app.data, null, 2)}`)
     }
   }
-
 
   async function syncInstallation () {
     const log = robot.log.child({ context: 'index' })
@@ -386,7 +384,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
 
   robot.on(member_change_events, async context => {
     const { payload } = context
-    const { sender } = payload
+    const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'member_change_events', repository: repository.name })
     log.debug('Repository member edited by ', JSON.stringify(sender))
     if (sender.type === 'Bot') {
@@ -413,12 +411,12 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
   })
 
   robot.on('repository.renamed', async context => {
-    if (env.BLOCK_REPO_RENAME_BY_HUMAN!== 'true') {
+    if (env.BLOCK_REPO_RENAME_BY_HUMAN !== 'true') {
       robot.log.debug(`"env.BLOCK_REPO_RENAME_BY_HUMAN" is 'false' by default. Repo rename is not managed by Safe-settings. Continue with the default behavior.`)
       return
     }
     const { payload } = context
-    const { sender } = payload
+    const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'repository.renamed', repository: repository.name })
 
     log.debug(`repository renamed from ${payload.changes.repository.name.from} to ${payload.repository.name} by ', ${sender.login}`)
@@ -433,7 +431,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
       const newPath = `.github/repos/${payload.repository.name}.yml`
       log.debug(oldPath)
       try {
-        const repofile =  await context.octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+        const repofile = await context.octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
           owner: payload.repository.owner.login,
           repo: env.ADMIN_REPO,
           path: oldPath,
@@ -458,11 +456,11 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
         } catch (error) {
           if (error.status === 404) {
             // if the a config file does not exist, create one from the old one
-            const update = await context.octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
+            await context.octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
               owner: payload.repository.owner.login,
               repo: env.ADMIN_REPO,
               path: newPath,
-              name:  `${payload.repository.name}.yml`,
+              name: `${payload.repository.name}.yml`,
               content: content,
               message: `Repo Renamed and safe-settings renamed the file from ${payload.changes.repository.name.from} to ${payload.repository.name}`,
               sha: repofile.data.sha,
@@ -475,24 +473,21 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
             log.error(error)
           }
         }
-
       } catch (error) {
         if (error.status === 404) {
-          //nop
+          // nop
         } else {
           log.error(error)
         }
       }
-      return
     } else {
       log.debug('Repository Edited by a Human')
       // Create a repository config to reset the name back to the previous name
-      const rename = {repository: { name: payload.changes.repository.name.from, oldname: payload.repository.name}}
-      const repo = {repo: payload.changes.repository.name.from, owner: payload.repository.owner.login}
+      const rename = { repository: { name: payload.changes.repository.name.from, oldname: payload.repository.name } }
+      const repo = { repo: payload.changes.repository.name.from, owner: payload.repository.owner.login }
       return renameSync(false, context, repo, rename)
     }
   })
-
 
   robot.on('check_suite.requested', async context => {
     const { payload } = context
