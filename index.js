@@ -361,7 +361,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
 
   robot.on(member_change_events, async context => {
     const { payload } = context
-    const { sender } = payload
+    const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'member_change_events', repository: repository.name })
     log.debug('Repository member edited by ', JSON.stringify(sender))
     if (sender.type === 'Bot') {
@@ -393,7 +393,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
       return
     }
     const { payload } = context
-    const { sender } = payload
+    const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'repository.renamed', repository: repository.name })
 
     log.debug(`repository renamed from ${payload.changes.repository.name.from} to ${payload.repository.name} by ', ${sender.login}`)
