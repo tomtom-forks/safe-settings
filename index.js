@@ -313,7 +313,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const log = robot.log.child({ context: 'index', event: 'create' })
     const { payload } = context
     const { sender } = payload
-    log.debug('Branch Creation by ', JSON.stringify(sender))
+    log.debug(`Branch Creation by ${sender.login}`)
     if (sender.type === 'Bot') {
       log.debug('Branch Creation by Bot')
       return
@@ -331,7 +331,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'branch_protection_rule', repository: repository.name })
-    log.debug('Branch Protection edited by ', JSON.stringify(sender))
+    log.debug(`Branch Protection edited by ${sender.login}`)
     if (sender.type === 'Bot') {
       log.debug('Branch Protection edited by Bot')
       return
@@ -344,7 +344,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'custom_property_values', repository: repository.name })
-    log.debug('Custom Property Value Updated for a repo by ', JSON.stringify(sender))
+    log.debug(`Custom Property Value Updated for a repo by ${sender.login}`)
     if (sender.type === 'Bot') {
       log.debug('Custom Property Value edited by Bot')
       return
@@ -357,7 +357,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'repository_ruleset', repository: repository.name })
-    log.debug('Repository Ruleset edited by ', JSON.stringify(sender))
+    log.debug(`Repository Ruleset edited by ${sender.login}`)
     if (sender.type === 'Bot') {
       log.debug('Repository Ruleset edited by Bot')
       return
@@ -386,7 +386,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'member_change_events', repository: repository.name })
-    log.debug('Repository member edited by ', JSON.stringify(sender))
+    log.info(`Repository member edited by ${sender.login}`)
     if (sender.type === 'Bot') {
       log.debug('Repository member edited by Bot')
       return
@@ -399,7 +399,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'repository.edited', repository: repository.name })
-    log.debug('repository.edited payload from ', JSON.stringify(sender))
+    log.debug(`repository.edited payload from ${sender.login}`)
 
     if (sender.type === 'Bot') {
       log.debug('Repository Edited by a Bot')
@@ -661,7 +661,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'repository.created', repository: repository.name })
-    log.debug('repository.created payload from ', JSON.stringify(sender))
+    log.debug('repository.created payload from ', sender.login)
     return syncSettings(false, context)
   })
 
