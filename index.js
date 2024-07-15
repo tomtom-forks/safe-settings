@@ -333,12 +333,11 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'branch_protection_rule', repository: repository.name })
-    log.debug(`Branch Protection edited by ${sender.login}`)
     if (sender.type === 'Bot') {
-      log.debug('Branch Protection edited by Bot')
+      log.debug(`Branch Protection edited by Bot: ${sender.login}`)
       return
     }
-    log.debug('Branch Protection edited by a Human')
+    log.debug(`Branch Protection edited by a Human: ${sender.login}`)
     return syncSettings(false, context)
   })
 
