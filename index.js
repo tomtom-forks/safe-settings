@@ -315,12 +315,11 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const log = robot.log.child({ context: 'index', event: 'create' })
     const { payload } = context
     const { sender } = payload
-    log.debug(`Branch Creation by ${sender.login}`)
     if (sender.type === 'Bot') {
-      log.debug('Branch Creation by Bot')
+      log.debug(`Branch Creation by Bot: ${sender.login}`)
       return
     }
-    log.debug('Branch Creation by a Human')
+    log.debug(`Branch Creation by a Human: ${sender.login}`)
     if (payload.repository.default_branch !== payload.ref) {
       log.debug('Not default Branch')
       return
@@ -345,12 +344,11 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'custom_property_values', repository: repository.name })
-    log.debug(`Custom Property Value Updated for a repo by ${sender.login}`)
     if (sender.type === 'Bot') {
-      log.debug('Custom Property Value edited by Bot')
+      log.debug(`Custom Property Value edited by Bot: ${sender.login}`)
       return
     }
-    log.debug('Custom Property Value edited by a Human')
+    log.debug(`Custom Property Value edited by a Human: ${sender.login}`)
     return syncSettings(false, context)
   })
 
@@ -358,13 +356,12 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'repository_ruleset', repository: repository.name })
-    log.debug(`Repository Ruleset edited by ${sender.login}`)
     if (sender.type === 'Bot') {
-      log.debug('Repository Ruleset edited by Bot')
+      log.debug(`Repository Ruleset edited by Bot: ${sender.login}`)
       return
     }
 
-    log.debug('Repository Repository edited by a Human')
+    log.debug(`Repository Repository edited by a Human: ${sender.login}`)
     if (payload.repository_ruleset.source_type === 'Organization') {
       // For org-level events, we need to update the context since context.repo() won't work
       const updatedContext = Object.assign({}, context, {
@@ -387,12 +384,11 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'member_change_events', repository: repository.name })
-    log.info(`Repository member edited by ${sender.login}`)
     if (sender.type === 'Bot') {
-      log.debug('Repository member edited by Bot')
+      log.debug(`Repository member edited by Bot: ${sender.login}`)
       return
     }
-    log.debug('Repository member edited by a Human')
+    log.debug(`Repository member edited by a Human: ${sender.login}'`)
     return syncSettings(false, context)
   })
 
@@ -400,13 +396,12 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender, repository } = payload
     const log = robot.log.child({ context: 'index', event: 'repository.edited', repository: repository.name })
-    log.debug(`repository.edited payload from ${sender.login}`)
 
     if (sender.type === 'Bot') {
-      log.debug('Repository Edited by a Bot')
+      log.debug(`Repository Edited by a Bot: ${sender.login}`)
       return
     }
-    log.debug('Repository Edited by a Human')
+    log.debug(`Repository Edited by a Human: ${sender.login}`)
 
     return syncSettings(false, context)
   })
