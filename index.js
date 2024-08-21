@@ -365,7 +365,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
       log.debug(`Repository member edited by Bot: ${sender.login}`)
       return
     }
-    log.debug(`Repository member edited by a Human: ${sender.login}'`)
+    log.debug(`Repository member edited by a Human: ${sender.login}`)
     return syncSettings(false, context)
   })
 
