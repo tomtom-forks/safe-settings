@@ -1,4 +1,5 @@
 const Repository = require('../../../../lib/plugins/repository')
+const { configureMockLogger } = require('../../common')
 
 describe('Repository', () => {
   const github = {
@@ -12,12 +13,9 @@ describe('Repository', () => {
       replaceAllTopics: jest.fn().mockResolvedValue()
     }
   }
-  const log = jest.fn()
-  log.child = jest.fn()
-  log.debug = jest.fn()
-  log.error = jest.fn()
 
   function configure (config) {
+    const log = configureMockLogger()
     const noop = false
     const errors = []
     return new Repository(noop, github, { owner: 'bkeepers', repo: 'test' }, config, 1, log, errors)
