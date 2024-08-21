@@ -10,7 +10,6 @@ const env = require('./lib/env')
 let deploymentConfig
 
 module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) => {
-  let appName = 'safe-settings'
   let appSlug = 'safe-settings'
   async function syncAllSettings (nop, context, repo = context.repo(), ref) {
     const log = robot.log.child({ context: 'index', repository: repo.repo })
@@ -236,7 +235,6 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
       const installation = installations[0]
       const github = await robot.auth(installation.id)
       const app = await github.apps.getAuthenticated()
-      appName = app.data.name
       appSlug = app.data.slug
       log.debug(`Validated the app is configured properly = \n${JSON.stringify(app.data, null, 2)}`)
     }
@@ -388,7 +386,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
       log.debug(`Repository member edited by Bot: ${sender.login}`)
       return
     }
-    log.debug(`Repository member edited by a Human: ${sender.login}'`)
+    log.debug(`Repository member edited by a Human: ${sender.login}`)
     return syncSettings(false, context)
   })
 
@@ -457,7 +455,7 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
               repo: env.ADMIN_REPO,
               path: newPath,
               name: `${payload.repository.name}.yml`,
-              content: content,
+              content,
               message: `Repo Renamed and safe-settings renamed the file from ${payload.changes.repository.name.from} to ${payload.repository.name}`,
               sha: repofile.data.sha,
               headers: {
