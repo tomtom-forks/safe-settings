@@ -1,8 +1,8 @@
 const Labels = require('../../../../lib/plugins/labels')
+const { configureMockLogger } = require('../../common')
 
 describe('Labels', () => {
   let github
-  let log
 
   function configure (config) {
     const nop = false

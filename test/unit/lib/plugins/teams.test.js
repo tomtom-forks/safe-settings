@@ -1,6 +1,7 @@
 const { when } = require('jest-when')
 const any = require('@travi/any')
 const Teams = require('../../../../lib/plugins/teams')
+const { configureMockLogger } = require('../../common')
 
 describe('Teams', () => {
   let github
@@ -15,7 +16,7 @@ describe('Teams', () => {
   const org = 'bkeepers'
 
   function configure (config) {
-    const log = { child: jest.fn(), debug: jest.fn(), error: console.error }
+    const log = configureMockLogger()
     const errors = []
     return new Teams(undefined, github, { owner: 'bkeepers', repo: 'test' }, config, log, errors)
   }

@@ -1,4 +1,5 @@
 const CustomProperties = require('../../../../lib/plugins/custom_properties')
+const { configureMockLogger } = require('../../common')
 
 describe('CustomProperties', () => {
   const nop = false

@@ -1,11 +1,12 @@
 const Autolinks = require('../../../../lib/plugins/autolinks')
+const { configureMockLogger } = require('../../common')
 
 describe('Autolinks', () => {
   const repo = { owner: 'owner', repo: 'repo' }
   let github
 
   function configure (config) {
-    const log = { child: jest.fn(), debug: jest.fn(), error: console.error }
+    const log = configureMockLogger()
     const nop = false
     const errors = []
     return new Autolinks(nop, github, repo, config, log, errors)

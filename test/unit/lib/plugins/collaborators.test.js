@@ -1,10 +1,11 @@
 const Collaborators = require('../../../../lib/plugins/collaborators')
+const { configureMockLogger } = require('../../common')
 
 describe('Collaborators', () => {
   let github
 
   function configure (config) {
-    const log = { child: jest.fn(), debug: jest.fn(), error: console.error }
+    const log = configureMockLogger()
     const errors = []
     return new Collaborators(undefined, github, { owner: 'bkeepers', repo: 'test' }, config, log, errors)
   }

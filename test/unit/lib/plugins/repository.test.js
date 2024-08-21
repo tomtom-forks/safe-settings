@@ -1,4 +1,5 @@
 const Repository = require('../../../../lib/plugins/repository')
+const { configureMockLogger } = require('../../common')
 
 describe('Repository', () => {
   const github = {
@@ -12,10 +13,6 @@ describe('Repository', () => {
       replaceAllTopics: jest.fn().mockResolvedValue()
     }
   }
-  const log = jest.fn()
-  log.child = jest.fn()
-  log.debug = jest.fn()
-  log.error = jest.fn()
 
   function configure (config) {
     const nop = false
