@@ -1,10 +1,11 @@
 const Labels = require('../../../../lib/plugins/labels')
+const { configureMockLogger } = require('../../common')
 
 describe('Labels', () => {
   let github
-  let log
 
   function configure(config) {
+    const log = configureMockLogger()
     const nop = false;
     const errors = []
     return new Labels(nop, github, { owner: 'bkeepers', repo: 'test' }, config, log, errors)

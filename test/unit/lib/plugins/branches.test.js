@@ -2,15 +2,13 @@
 
 const { when } = require('jest-when')
 const Branches = require('../../../../lib/plugins/branches')
+const { configureMockLogger } = require('../../common')
 
 describe('Branches', () => {
   let github
-  const log = jest.fn()
-  log.child = jest.fn()
-  log.debug = jest.fn()
-  log.error = jest.fn()
 
   function configure (config) {
+    const log = configureMockLogger()
     const noop = false
     const errors = []
     return new Branches(noop, github, { owner: 'bkeepers', repo: 'test' }, config, log, errors)

@@ -1,11 +1,12 @@
 const CustomProperties = require('../../../../lib/plugins/custom_properties')
+const { configureMockLogger } = require('../../common')
 
 describe('CustomProperties', () => {
     let github
     const repo = { owner: 'owner', repo: 'repo' }
-    let log
 
     function configure (config) {
+        const log = configureMockLogger()
         const nop = false;
         const errors = []
         return new CustomProperties(nop, github, { owner: 'bkeepers', repo: 'test' }, config, log, errors)

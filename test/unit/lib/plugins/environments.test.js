@@ -1,10 +1,12 @@
 const { when } = require('jest-when')
 const Environments = require('../../../../lib/plugins/environments')
+const { configureMockLogger } = require('../../common')
 
 describe('Environments', () => {
     let github
     const org = 'bkeepers'
     const repo = 'test'
+    const log = configureMockLogger()
 
     function fillEnvironment(attrs) {
         if (!attrs.wait_timer) attrs.wait_timer = 0;
@@ -81,11 +83,7 @@ describe('Environments', () => {
                     }
                 ]
             }
-        ], {
-            child: function() {},
-            debug: function() {},
-            error: function() {},
-        }, []);
+        ], log, []);
 
         when(github.request)
             .calledWith('GET /repos/:org/:repo/environments', { org, repo })
