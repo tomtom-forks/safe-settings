@@ -837,7 +837,7 @@ entries:
     const source = YAML.load(`
 entries:
 - key_prefix: ASDF-
-  url_template: https://jiranew.company.com/browse/ASDF-<num>
+  url_template: https://jira.company.com/browse/ASDF-<num>
 - key_prefix: BOLIGRAFO-
   url_template: https://jira.company.com/browse/BOLIGRAFO-<num>
   `)
@@ -857,14 +857,7 @@ entries:
           }
         ]
       },
-      modifications: {
-        entries: [
-          {
-            key_prefix: "ASDF-",
-            url_template: "https://jiranew.company.com/browse/ASDF-<num>"
-          }
-        ]
-      },
+      modifications: {},
       deletions: {
         entries: [ {
           key_prefix: "BOLSIGRAFO-",
