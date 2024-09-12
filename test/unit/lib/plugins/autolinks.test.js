@@ -139,6 +139,16 @@ describe('Autolinks', () => {
           is_alphanumeric: true,
           ...repo
         })
+        expect(github.repos.deleteAutolink).toHaveBeenCalledWith({
+          autolink_id: '10',
+           ...repo
+        })
+        expect(github.repos.createAutolink).toHaveBeenCalledWith({
+          key_prefix: 'NEW_URL_NEW_ALPHA-',
+          url_template: 'https://new-url/<num>',
+          is_alphanumeric: true,
+          ...repo
+        })
 
         expect(github.repos.deleteAutolink).toHaveBeenCalledTimes(5)
         expect(github.repos.createAutolink).toHaveBeenCalledTimes(5)
