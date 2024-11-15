@@ -71,6 +71,38 @@ describe('Branches', () => {
       })
     })
 
+    describe('when required_status_checks not present', () => {
+      it('should add required_status_checks and other required fields', () => {
+        const plugin = configure(
+          [{
+            name: 'master',
+            protection: {
+              enforce_admins: true,
+              required_pull_request_reviews: {
+                require_code_owner_reviews: true
+              }
+            }
+          }]
+        )
+
+        return plugin.sync().then(() => {
+          expect(github.repos.updateBranchProtection).toHaveBeenCalledWith({
+            owner: 'bkeepers',
+            repo: 'test',
+            branch: 'master',
+            required_status_checks: null,
+            enforce_admins: true,
+            required_pull_request_reviews: {
+              require_code_owner_reviews: true
+            },
+            headers: { accept: 'application/vnd.github.hellcat-preview+json,application/vnd.github.luke-cage-preview+json,application/vnd.github.zzzax-preview+json' },
+            required_linear_history: undefined,
+            restrictions: null,
+          })
+        })
+      })
+    })
+
     describe('when the "protection" config is empty object', () => {
       it('removes branch protection', () => {
         const plugin = configure(
@@ -201,6 +233,39 @@ describe('Branches', () => {
             headers: { accept: 'application/vnd.github.hellcat-preview+json,application/vnd.github.luke-cage-preview+json,application/vnd.github.zzzax-preview+json' },
             required_linear_history: undefined,
             required_status_checks: null,
+            restrictions: null,
+          })
+        })
+      })
+    })
+
+    describe('when branch protections not available', () => {
+      it('should update branch protections with all required attributes', () => {
+        const plugin = configure(
+          [
+            {
+              name: 'master',
+              protection: { enforce_admins: false }
+            }
+          ]
+        )
+
+        when(github.repos.getBranchProtection)
+          .calledWith(expect.objectContaining({
+            branch: 'master'
+          })).mockRejectedValue(
+            Object.assign(new Error('Branch not protected'), { status: 404 })
+          )
+
+        return plugin.sync().then(() => {
+          expect(github.repos.updateBranchProtection).toHaveBeenCalledWith({
+            owner: 'bkeepers',
+            repo: 'test',
+            branch: 'master',
+            required_status_checks: null,
+            enforce_admins: false,
+            headers: { accept: 'application/vnd.github.hellcat-preview+json,application/vnd.github.luke-cage-preview+json,application/vnd.github.zzzax-preview+json' },
+            required_linear_history: undefined,
             restrictions: null,
           })
         })
