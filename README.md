@@ -32,7 +32,11 @@
 >
 > Settings files must have a `.yml` extension only. For now, the `.yaml` extension is ignored.
 
+
 ## How it works
+
+`Safe-settings` is designed to run as a service listening for webhook events or as a scheduled job running on some regular cadence. It can also be triggered through GitHub Actions. (See the [How to use](#how-to-use) section for details on deploying and configuring.)
+
 
 ### Events
 The App listens to the following webhook events:
@@ -364,11 +368,13 @@ You can pass environment variables; the easiest way to do it is via a `.env` fil
 
 ## How to use
 
-1. __[Deploy and install the app](docs/deploy.md)__.
+1. Create an `admin` repo (or an alternative of your choosing) within your organization. Remember to set `CONFIG_REPO` if you choose something other than `admin`. See [Environment variables](#environment-variables) for more details.
 
-2. Create an `admin` repo (or an alternative of your choosing) within your organization. Remember to set `CONFIG_REPO` if you choose something other than `admin`. See [Environment variables](#environment-variables) for more details.
+2. Add the settings for the `org`, `suborgs`, and `repos`. Sample files can be found [here](docs/sample-settings).
 
-3. Add the settings for the `org`, `suborgs`, and `repos`. Sample files can be found [here](docs/sample-settings).
+3. __[Deploy and install the app](docs/deploy.md)__.  Alternatively, the __[GitHub Actions Guide](docs/github-action.md)__ describes how to run `safe-settings` with GitHub Actions.
+
+
 
 
 ## License
