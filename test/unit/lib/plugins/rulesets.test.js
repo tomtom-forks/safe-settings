@@ -5,20 +5,31 @@ const Rulesets = require('../../../../lib/plugins/rulesets')
 const version = {
   'X-GitHub-Api-Version': '2022-11-28'
 }
+const repo_conditions = {
+  ref_name: {
+    include: ['~ALL'],
+    exclude: []
+  },
+}
+const org_conditions = {
+  ref_name: {
+    include: ['~ALL'],
+    exclude: []
+  },
+  repository_name: {
+    include: ["~ALL"],
+    exclude: ["admin"]
+  }
+}
 
-function generateRequestRuleset(id, name, checks) {
-  return {
+function generateRequestRuleset(id, name, conditions, checks) {
+  response = {
     id: id,
     name: name,
     source_type: 'Repository',
     target: 'branch',
     enforcement: 'active',
-    conditions: {
-      ref_name: {
-        include: ['~ALL'],
-        exclude: []
-      }
-    },
+    conditions: conditions,
     rules: [
       {
         type: 'required_status_checks',
@@ -29,23 +40,17 @@ function generateRequestRuleset(id, name, checks) {
       }
     ]
   }
+  return response
 }
 
-function generateResponseRuleset(id, name, checks) {
-  return {
+function generateResponseRuleset(id, name, conditions, checks, org=false) {
+  response = {
     id: id,
     name: name,
     source_type: 'Repository',
     target: 'branch',
     enforcement: 'active',
-    conditions: {
-      ref_name: {
-        include: ['~ALL'],
-        exclude: []
-      }
-    },
-    owner: 'jitran',
-    repo: 'test',
+    conditions: conditions,
     rules: [
       {
         type: 'required_status_checks',
@@ -57,6 +62,13 @@ function generateResponseRuleset(id, name, checks) {
     ],
     headers: version,
   }
+  if (org) {
+    response.org = 'jitran'
+  } else {
+    response.owner = 'jitran'
+    response.repo = 'test'
+  }
+  return response
 }
 
 describe('Rulesets', () => {
@@ -65,10 +77,10 @@ describe('Rulesets', () => {
   log.debug = jest.fn()
   log.error = jest.fn()
 
-  function configure (config) {
+  function configure (config, scope='repo') {
     const noop = false
     const errors = []
-    return new Rulesets(noop, github, { owner: 'jitran', repo: 'test' }, config, log, errors)
+    return new Rulesets(noop, github, { owner: 'jitran', repo: 'test' }, config, log, errors, scope)
   }
 
   beforeEach(() => {
@@ -82,7 +94,7 @@ describe('Rulesets', () => {
       },
       request: jest.fn().mockImplementation(() => Promise.resolve('request')),
     }
-    
+
     github.request.endpoint = {
       merge: jest.fn().mockReturnValue({
         method: 'GET',
@@ -103,6 +115,7 @@ describe('Rulesets', () => {
           generateRequestRuleset(
             1,
             'All branches',
+            repo_conditions,
             [
               { context: 'Status Check 1' },
               { context: 'Status Check 2' }
@@ -117,6 +130,7 @@ describe('Rulesets', () => {
           generateResponseRuleset(
             1,
             'All branches',
+            repo_conditions,
             [
               { context: 'Status Check 1' },
               { context: 'Status Check 2' }
@@ -138,6 +152,7 @@ describe('Rulesets', () => {
           generateRequestRuleset(
             1,
             'All branches',
+            repo_conditions,
             [
               { context: 'Status Check 1' },
               { context: '{{EXTERNALLY_DEFINED}}' }
@@ -152,6 +167,7 @@ describe('Rulesets', () => {
           generateResponseRuleset(
             1,
             'All branches',
+            repo_conditions,
             []
           )
         )
@@ -166,6 +182,7 @@ describe('Rulesets', () => {
         generateRequestRuleset(
           1,
           'All branches 1',
+          repo_conditions,
           [
             { context: 'Custom Check 1' },
             { context: 'Custom Check 2' }
@@ -174,6 +191,7 @@ describe('Rulesets', () => {
         generateRequestRuleset(
           2,
           'All branches 2',
+          repo_conditions,
           [
             { context: 'Custom Check 3' },
             { context: 'Custom Check 4' }
@@ -182,6 +200,7 @@ describe('Rulesets', () => {
         generateRequestRuleset(
           3,
           'All branches 3',
+          repo_conditions,
           [
             { context: 'Custom Check 5' },
             { context: 'Custom Check 6' }
@@ -195,6 +214,7 @@ describe('Rulesets', () => {
           generateRequestRuleset(
             1,
             'All branches 1',
+            repo_conditions,
             [
               { context: 'Status Check 1' },
               { context: '{{EXTERNALLY_DEFINED}}' }
@@ -203,6 +223,7 @@ describe('Rulesets', () => {
           generateRequestRuleset(
             2,
             'All branches 2',
+            repo_conditions,
             [
               { context: 'Status Check 1' },
               { context: 'Status Check 2' }
@@ -211,6 +232,7 @@ describe('Rulesets', () => {
           generateRequestRuleset(
             3,
             'All branches 3',
+            repo_conditions,
             []
           )
         ]
@@ -223,6 +245,7 @@ describe('Rulesets', () => {
           generateResponseRuleset(
             1,
             'All branches 1',
+            repo_conditions,
             [
               { context: 'Custom Check 1' },
               { context: 'Custom Check 2' }
@@ -235,6 +258,7 @@ describe('Rulesets', () => {
           generateResponseRuleset(
             2,
             'All branches 2',
+            repo_conditions,
             [
               { context: 'Status Check 1' },
               { context: 'Status Check 2' }
@@ -247,11 +271,136 @@ describe('Rulesets', () => {
           generateResponseRuleset(
             3,
             'All branches 3',
+            repo_conditions,
             []
           )
         )
       })
     })
   })
-  // TODO: Write tests for org rulesets
+
+  describe('[org] sync', () => {
+    it('syncs ruleset settings', () => {
+      // Mock the GitHub API response
+      github.paginate = jest.fn().mockResolvedValue([])
+
+      // Initialise safe-settings
+      const plugin = configure(
+        [
+          generateRequestRuleset(
+            1,
+            'All branches',
+            org_conditions,
+            [
+              { context: 'Status Check 1' },
+              { context: 'Status Check 2' }
+            ]
+          )
+        ],
+        'org'
+      )
+
+      return plugin.sync().then(() => {
+        expect(github.request).toHaveBeenLastCalledWith(
+          'POST /orgs/{org}/rulesets',
+          generateResponseRuleset(
+            1,
+            'All branches',
+            org_conditions,
+            [
+              { context: 'Status Check 1' },
+              { context: 'Status Check 2' }
+            ],
+            true
+          )
+        )
+      })
+    })
+  })
+
+  describe('[org] when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and no status checks exists in GitHub', () => {
+    it('it initialises the status checks with an empty list', () => {
+      // Mock the GitHub API response
+      github.paginate = jest.fn().mockResolvedValue([])
+
+      // Initialise safe-settings
+      const plugin = configure(
+        [
+          generateRequestRuleset(
+            1,
+            'All branches',
+            org_conditions,
+            [
+              { context: 'Status Check 1' },
+              { context: '{{EXTERNALLY_DEFINED}}' }
+            ]
+          )
+        ],
+        'org'
+      )
+
+      return plugin.sync().then(() => {
+        expect(github.request).toHaveBeenLastCalledWith(
+          'POST /orgs/{org}/rulesets',
+          generateResponseRuleset(
+            1,
+            'All branches',
+            org_conditions,
+            [],
+            true
+          )
+        )
+      })
+    })
+  })
+
+  describe('[org] when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and status checks exists in GitHub', () => {
+    it('it retains the status checks from GitHub', () => {
+      // Mock the GitHub API response
+      github.paginate = jest.fn().mockResolvedValue([
+        generateRequestRuleset(
+          1,
+          'All branches 1',
+          org_conditions,
+          [
+            { context: 'Custom Check 1' },
+            { context: 'Custom Check 2' }
+          ]
+        )
+      ])
+
+      // Initialise safe-settings
+      const plugin = configure(
+        [
+          generateRequestRuleset(
+            1,
+            'All branches 1',
+            org_conditions,
+            [
+              { context: 'Status Check 1' },
+              { context: '{{EXTERNALLY_DEFINED}}' }
+            ]
+          )
+        ],
+        'org'
+      )
+
+      return plugin.sync().then(() => {
+        expect(github.request).toHaveBeenNthCalledWith(
+          1,
+          'PUT /orgs/{org}/rulesets/{id}',
+          generateResponseRuleset(
+            1,
+            'All branches 1',
+            org_conditions,
+            [
+              { context: 'Custom Check 1' },
+              { context: 'Custom Check 2' }
+            ],
+            true
+          )
+        )
+      })
+    })
+  })
 })

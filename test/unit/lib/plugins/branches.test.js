@@ -181,7 +181,7 @@ describe('Branches', () => {
 
         return plugin.sync().then(() => {
           expect(github.repos.updateBranchProtection).toHaveBeenCalledWith({
-            owner: 'jitran',
+            owner: 'bkeepers',
             repo: 'test',
             branch: 'main',
             required_status_checks: {
@@ -220,7 +220,7 @@ describe('Branches', () => {
 
         return plugin.sync().then(() => {
           expect(github.repos.updateBranchProtection).toHaveBeenCalledWith({
-            owner: 'jitran',
+            owner: 'bkeepers',
             repo: 'test',
             branch: 'main',
             required_status_checks: {
