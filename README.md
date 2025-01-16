@@ -128,7 +128,7 @@ For branch protection rules and rulesets, you can allow for status checks to be 
 
 This can be defined at the org, sub-org, and repo level.
 
-To configure this for branch protection rules, specifiy `{{EXTERNALLY_DEFINED}}` under the `contexts` keyword:
+To configure this for branch protection rules, specify `{{EXTERNALLY_DEFINED}}` under the `contexts` keyword:
 ```yaml
 branches:
   - name: main
