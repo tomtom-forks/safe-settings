@@ -22,11 +22,10 @@ const org_conditions = {
   }
 }
 
-function generateRequestRuleset(id, name, conditions, checks) {
+function generateRequestRuleset(id, name, conditions, checks, org=false) {
   response = {
     id: id,
     name: name,
-    source_type: 'Repository',
     target: 'branch',
     enforcement: 'active',
     conditions: conditions,
@@ -40,6 +39,11 @@ function generateRequestRuleset(id, name, conditions, checks) {
       }
     ]
   }
+  if (org) {
+    response.source_type = 'Organization'
+  } else {
+    response.source_type = 'Repository'
+  }
   return response
 }
 
@@ -47,7 +51,6 @@ function generateResponseRuleset(id, name, conditions, checks, org=false) {
   response = {
     id: id,
     name: name,
-    source_type: 'Repository',
     target: 'branch',
     enforcement: 'active',
     conditions: conditions,
@@ -63,8 +66,10 @@ function generateResponseRuleset(id, name, conditions, checks, org=false) {
     headers: version,
   }
   if (org) {
+    response.source_type = 'Organization'
     response.org = 'jitran'
   } else {
+    response.source_type = 'Repository'
     response.owner = 'jitran'
     response.repo = 'test'
   }
@@ -100,8 +105,9 @@ describe('Rulesets', () => {
         method: 'GET',
         url: '/repos/jitran/test/rulesets',
         headers: version
-        })
-      }
+        }
+      )
+    }
   })
 
   describe('sync', () => {
@@ -141,7 +147,7 @@ describe('Rulesets', () => {
     })
   })
 
-  describe('when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and no status checks exists in GitHub', () => {
+  describe('when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and no status checks exist in GitHub', () => {
     it('it initialises the status checks with an empty list', () => {
       // Mock the GitHub API response
       github.paginate = jest.fn().mockResolvedValue([])
@@ -175,7 +181,7 @@ describe('Rulesets', () => {
     })
   })
 
-  describe('when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and status checks exists in GitHub', () => {
+  describe('when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and status checks exist in GitHub', () => {
     it('it retains the status checks from GitHub and everything else is reset to the safe-settings', () => {
       // Mock the GitHub API response
       github.paginate = jest.fn().mockResolvedValue([
@@ -294,7 +300,8 @@ describe('Rulesets', () => {
             [
               { context: 'Status Check 1' },
               { context: 'Status Check 2' }
-            ]
+            ],
+            true
           )
         ],
         'org'
@@ -318,7 +325,7 @@ describe('Rulesets', () => {
     })
   })
 
-  describe('[org] when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and no status checks exists in GitHub', () => {
+  describe('[org] when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and no status checks exist in GitHub', () => {
     it('it initialises the status checks with an empty list', () => {
       // Mock the GitHub API response
       github.paginate = jest.fn().mockResolvedValue([])
@@ -333,7 +340,8 @@ describe('Rulesets', () => {
             [
               { context: 'Status Check 1' },
               { context: '{{EXTERNALLY_DEFINED}}' }
-            ]
+            ],
+            true
           )
         ],
         'org'
@@ -354,7 +362,7 @@ describe('Rulesets', () => {
     })
   })
 
-  describe('[org] when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and status checks exists in GitHub', () => {
+  describe('[org] when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and status checks exist in GitHub', () => {
     it('it retains the status checks from GitHub', () => {
       // Mock the GitHub API response
       github.paginate = jest.fn().mockResolvedValue([
@@ -365,7 +373,8 @@ describe('Rulesets', () => {
           [
             { context: 'Custom Check 1' },
             { context: 'Custom Check 2' }
-          ]
+          ],
+          true
         )
       ])
 
@@ -379,7 +388,8 @@ describe('Rulesets', () => {
             [
               { context: 'Status Check 1' },
               { context: '{{EXTERNALLY_DEFINED}}' }
-            ]
+            ],
+            true
           )
         ],
         'org'

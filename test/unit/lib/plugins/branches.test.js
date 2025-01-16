@@ -165,7 +165,7 @@ describe('Branches', () => {
       })
     })
 
-    describe('when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and no status checks exists in GitHub', () => {
+    describe('when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and no status checks exist in GitHub', () => {
       it('it initialises the status checks with an empty list', () => {
         const plugin = configure(
           [{
@@ -194,7 +194,7 @@ describe('Branches', () => {
       })
     })
 
-    describe('when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and status checks exists in GitHub', () => {
+    describe('when {{EXTERNALLY_DEFINED}} is present in "required_status_checks" and status checks exist in GitHub', () => {
       it('it retains the status checks from GitHub', () => {
         github.repos.getBranchProtection = jest.fn().mockResolvedValue({
           data: {
