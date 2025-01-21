@@ -23,7 +23,7 @@ const org_conditions = {
 }
 
 function generateRequestRuleset(id, name, conditions, checks, org=false) {
-  response = {
+  request = {
     id: id,
     name: name,
     target: 'branch',
@@ -40,11 +40,14 @@ function generateRequestRuleset(id, name, conditions, checks, org=false) {
     ]
   }
   if (org) {
-    response.source_type = 'Organization'
+    request.source_type = 'Organization'
   } else {
-    response.source_type = 'Repository'
+    request.source_type = 'Repository'
   }
-  return response
+  if (checks.length === 0) {
+    request.rules = []
+  }
+  return request
 }
 
 function generateResponseRuleset(id, name, conditions, checks, org=false) {
@@ -72,6 +75,9 @@ function generateResponseRuleset(id, name, conditions, checks, org=false) {
     response.source_type = 'Repository'
     response.owner = 'jitran'
     response.repo = 'test'
+  }
+  if (checks.length === 0) {
+    response.rules = []
   }
   return response
 }
