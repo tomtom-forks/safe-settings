@@ -153,6 +153,7 @@ rulesets:
 
 Notes:
   - For the same branch that is covered by multi-level branch protection rules, contexts defined at the org level are merged into the sub-org and repo level contexts, while contexts defined at the sub-org level are merged into the repo level contexts.
+  - Rules from the sub-org level are merged into the repo level when their ruleset share the same name. Becareful not to define the same rule type in both levels as it will be rejected by GitHub.
   - When `{{EXTERNALLY_DEFINED}}` is defined for a new branch protection rule or ruleset configuration, they will be deployed with no status checks.
   - When an existing branch protection rule or ruleset configuration is amended with `{{EXTERNALLY_DEFINED}}`, the status checks in the existing rules in GitHub will remain as is.
 
