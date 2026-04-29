@@ -1,0 +1,13 @@
+0a1,2
+> WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+> /opt/safe-settings/lib/commentmessage.js
+3a6
+> /opt/safe-settings/lib/error.js
+7a11
+> /opt/safe-settings/lib/plugins/archive.js
+16a21
+> /opt/safe-settings/lib/plugins/overrides.js
+20a26,28
+> /opt/safe-settings/lib/plugins/variables.js
+> /opt/safe-settings/lib/proxiedFetch.js
+> /opt/safe-settings/lib/proxyAwareProbotOctokit.js
