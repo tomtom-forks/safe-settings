@@ -458,4 +458,88 @@ repository:
       );
     });
   });
+
+  describe('updateRepos shared-mutable-state regression', () => {
+    // Regression test for the bug where `Object.assign(this.config.repository, ...)`
+    // mutated the shared org-level config object across concurrent repo iterations,
+    // causing the Repository plugin to receive a `name` belonging to a different
+    // repo and emit a `PATCH /repos/{owner}/{repo}` rename request.
+    //
+    // The fix is to clone (`Object.assign({}, ...)`) instead of mutating.
+
+    it('does not mutate this.config.repository when called per-repo', async () => {
+      const config = {
+        restrictedRepos: { exclude: [] },
+        repository: { topics: ['shared'] }
+      }
+      const settings = createSettings(config)
+      // Pre-load suborg/repo configs to avoid network calls inside updateRepos
+      settings.subOrgConfigs = {}
+      settings.repoConfigs = {}
+      // Default beforeEach sets subOrgConfigMap (suborg='frontend') which would
+      // make updateRepos early-return; clear it so the plugin path runs.
+      settings.subOrgConfigMap = undefined
+      // We don't need updateRepos to actually run plugins; bail out early by
+      // making `repoConfig` evaluation succeed but plugins never run. The
+      // assertions only need the early portion of updateRepos to execute.
+      // Spy on the Repository plugin so it does no real work.
+      const originalRepoPlugin = Settings.PLUGINS.repository
+      Settings.PLUGINS.repository = jest.fn().mockImplementation(() => ({
+        sync: jest.fn().mockResolvedValue([])
+      }))
+      const archiveSpy = jest
+        .spyOn(require('../../../lib/plugins/archive').prototype, 'getState')
+        .mockResolvedValue({ shouldArchive: false, shouldUnarchive: false })
+      try {
+        await settings.updateRepos({ owner: 'tomtomsptesting', repo: 'repo-a' })
+        await settings.updateRepos({ owner: 'tomtomsptesting', repo: 'repo-b' })
+        // The shared org config object MUST NOT have acquired a `name` field
+        // from either iteration. If this assertion fails we are back to the
+        // pre-fix shared-mutable-state behaviour.
+        expect(config.repository).toEqual({ topics: ['shared'] })
+        expect(config.repository).not.toHaveProperty('name')
+        expect(config.repository).not.toHaveProperty('org')
+      } finally {
+        Settings.PLUGINS.repository = originalRepoPlugin
+        archiveSpy.mockRestore()
+      }
+    })
+
+    it('passes a per-repo `name` to the Repository plugin even under concurrent runs', async () => {
+      const config = {
+        restrictedRepos: { exclude: [] },
+        repository: { topics: ['shared'] }
+      }
+      const settings = createSettings(config)
+      settings.subOrgConfigs = {}
+      settings.repoConfigs = {}
+      settings.subOrgConfigMap = undefined
+      const passedConfigs = []
+      const originalRepoPlugin = Settings.PLUGINS.repository
+      Settings.PLUGINS.repository = jest
+        .fn()
+        .mockImplementation((nop, github, repo, repoConfig) => {
+          // Snapshot at construction time so a later mutation cannot rewrite history
+          passedConfigs.push({ repo: repo.repo, name: repoConfig.name })
+          return { sync: jest.fn().mockResolvedValue([]) }
+        })
+      const archiveSpy = jest
+        .spyOn(require('../../../lib/plugins/archive').prototype, 'getState')
+        .mockResolvedValue({ shouldArchive: false, shouldUnarchive: false })
+      try {
+        await Promise.all([
+          settings.updateRepos({ owner: 'tomtomsptesting', repo: 'repo-a' }),
+          settings.updateRepos({ owner: 'tomtomsptesting', repo: 'repo-b' }),
+          settings.updateRepos({ owner: 'tomtomsptesting', repo: 'repo-c' })
+        ])
+        const byRepo = Object.fromEntries(passedConfigs.map(p => [p.repo, p.name]))
+        expect(byRepo['repo-a']).toBe('repo-a')
+        expect(byRepo['repo-b']).toBe('repo-b')
+        expect(byRepo['repo-c']).toBe('repo-c')
+      } finally {
+        Settings.PLUGINS.repository = originalRepoPlugin
+        archiveSpy.mockRestore()
+      }
+    })
+  })
 }) // Settings Tests
