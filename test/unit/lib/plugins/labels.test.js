@@ -66,8 +66,8 @@ describe('Labels', () => {
         expect(github.issues.updateLabel).toHaveBeenCalledWith({
           owner: 'bkeepers',
           repo: 'test',
-          current_name: 'update-me',
-          name: 'new-name',
+          name: 'update-me',
+          new_name: 'new-name',
           color: 'FFFFFF',
           description: '',
           headers: { accept: 'application/vnd.github.symmetra-preview+json' }
@@ -76,7 +76,6 @@ describe('Labels', () => {
         expect(github.issues.updateLabel).toHaveBeenCalledWith({
           owner: 'bkeepers',
           repo: 'test',
-          current_name: 'new-color',
           name: 'new-color',
           color: '999999',
           description: '',
@@ -86,7 +85,6 @@ describe('Labels', () => {
         expect(github.issues.updateLabel).toHaveBeenCalledWith({
           owner: 'bkeepers',
           repo: 'test',
-          current_name: 'new-description',
           name: 'new-description',
           color: '000000',
           description: 'Hello world',
@@ -132,8 +130,8 @@ describe('Labels', () => {
         expect(github.issues.updateLabel).toHaveBeenCalledWith({
           owner: 'bkeepers',
           repo: 'test',
-          current_name: 'update-me',
-          name: 'new-name',
+          name: 'update-me',
+          new_name: 'new-name',
           color: 'FFFFFF',
           description: '',
           headers: { accept: 'application/vnd.github.symmetra-preview+json' }

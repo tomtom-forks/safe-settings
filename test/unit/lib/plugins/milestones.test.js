@@ -1,6 +1,6 @@
 const Milestones = require('../../../../lib/plugins/milestones')
 
-describe.skip('Milestones', () => {
+describe('Milestones', () => {
   let github
 
   function configure (config) {
@@ -11,7 +11,7 @@ describe.skip('Milestones', () => {
     github = {
       paginate: jest.fn().mockImplementation(() => Promise.resolve()),
       issues: {
-        listMilestonesForRepo: {
+        listMilestones: {
           endpoint: {
             merge: jest.fn().mockImplementation(() => {})
           }
