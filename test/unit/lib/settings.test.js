@@ -76,6 +76,9 @@ repository:
         info: jest.fn((msg) => {
           console.log(msg)
         }),
+        warn: jest.fn((msg) => {
+          console.log(msg)
+        }),
         error: jest.fn((msg) => {
           console.log(msg)
         })
@@ -284,21 +287,20 @@ repository:
         expect(ownProperties.length).toEqual(3)
       })
 
-      it("Should throw an error when a repo is found in multiple suborgs configs'", async () => {
-        //mockSubOrg = jest.fn().mockReturnValue(['suborg1', 'suborg2'])
+      it("Should NOT throw when a repo is found in multiple suborg configs; instead log a SUBORG_CONFLICT warning and let the last-loaded config win (TomTom fork: matches 0.3.3 silent-overwrite to avoid freezing the org sync on bad admin config)", async () => {
         mockSubOrg = undefined
         settings = createSettings(stubConfig)
+        const warnSpy = jest.spyOn(settings.log, 'warn').mockImplementation(() => {})
         jest.spyOn(settings, 'loadConfigMap').mockImplementation(() => [{ name: "frontend", path: ".github/suborgs/frontend.yml" }, { name: "backend", path: ".github/suborgs/backend.yml" }])
         jest.spyOn(settings, 'loadYaml').mockImplementation(() => subOrgConfig)
         jest.spyOn(settings, 'getReposForTeam').mockImplementation(() => [{ name: 'repo-test' }])
         jest.spyOn(settings, 'getSubOrgRepositories').mockImplementation(() => [{ repository_name: 'repo-for-property' }])
 
-        expect(async () => await settings.getSubOrgConfigs()).rejects.toThrow('Multiple suborg configs for new-repo in .github/suborgs/backend.yml and .github/suborgs/frontend.yml')
-        // try {
-        //   await settings.getSubOrgConfigs()
-        // } catch (e) {
-        //   console.log(e)
-        // }
+        const subOrgConfigs = await settings.getSubOrgConfigs()
+        expect(subOrgConfigs).toBeDefined()
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringMatching(/^SUBORG_CONFLICT repo=new-repo winner=.+ loser=.+$/)
+        )
       })
     })
   }) // loadConfigs
