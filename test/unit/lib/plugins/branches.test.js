@@ -265,6 +265,39 @@ describe('Branches', () => {
             repo: 'test',
             branch: 'other',
             enforce_admins: false,
+            // Always present now (null = none) so GitHub's PUT does not 422.
+            required_status_checks: null,
+            headers: { accept: 'application/vnd.github.hellcat-preview+json,application/vnd.github.luke-cage-preview+json,application/vnd.github.zzzax-preview+json' }
+          })
+        })
+      })
+    })
+
+    describe('when required_status_checks is omitted from config', () => {
+      it('preserves status checks already configured on the repo (0.3.3 parity)', () => {
+        const plugin = configure(
+          [{
+            name: 'master',
+            protection: { enforce_admins: true }
+          }]
+        )
+
+        when(github.repos.getBranchProtection)
+          .calledWith(expect.objectContaining({ branch: 'master' }))
+          .mockResolvedValue({
+            data: {
+              enforce_admins: { enabled: false },
+              required_status_checks: { strict: true, checks: [{ context: 'ci/build' }] }
+            }
+          })
+
+        return plugin.sync().then(() => {
+          expect(github.repos.updateBranchProtection).toHaveBeenCalledWith({
+            owner: 'bkeepers',
+            repo: 'test',
+            branch: 'master',
+            enforce_admins: true,
+            required_status_checks: { strict: true, checks: [{ context: 'ci/build' }] },
             headers: { accept: 'application/vnd.github.hellcat-preview+json,application/vnd.github.luke-cage-preview+json,application/vnd.github.zzzax-preview+json' }
           })
         })
