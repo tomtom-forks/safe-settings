@@ -544,4 +544,50 @@ repository:
       }
     })
   })
+  describe('eachRepositoryRepos bounded concurrency', () => {
+    beforeEach(() => {
+      stubConfig = { restrictedRepos: {} }
+    })
+
+    it('processes every repository with at most SS_REPO_CONCURRENCY in flight', async () => {
+      const settings = createSettings(stubConfig)
+      const repositories = Array.from({ length: 23 }, (_, i) => ({ owner: { login: 'org' }, name: `repo-${i}` }))
+      const github = { paginate: jest.fn().mockResolvedValue(repositories) }
+      let inFlight = 0
+      let maxInFlight = 0
+      settings.checkAndProcessRepo = jest.fn(async (owner, name) => {
+        inFlight++
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await new Promise(resolve => setImmediate(resolve))
+        inFlight--
+        return name
+      })
+
+      const results = await settings.eachRepositoryRepos(github, stubContext.log)
+
+      expect(settings.checkAndProcessRepo).toHaveBeenCalledTimes(23)
+      expect(results.filter(Boolean)).toHaveLength(23)
+      expect(maxInFlight).toBeLessThanOrEqual(4)
+      expect(maxInFlight).toBeGreaterThan(1)
+    })
+
+    it('a repo that throws is logged and does not strand the rest of the queue', async () => {
+      const settings = createSettings(stubConfig)
+      const repositories = Array.from({ length: 10 }, (_, i) => ({ owner: { login: 'org' }, name: `repo-${i}` }))
+      const github = { paginate: jest.fn().mockResolvedValue(repositories) }
+      settings.checkAndProcessRepo = jest.fn(async (owner, name) => {
+        if (name === 'repo-2' || name === 'repo-5') {
+          throw new Error(`boom ${name}`)
+        }
+        return name
+      })
+
+      const results = await settings.eachRepositoryRepos(github, stubContext.log)
+
+      expect(settings.checkAndProcessRepo).toHaveBeenCalledTimes(10)
+      expect(results.filter(Boolean)).toHaveLength(8)
+      expect(settings.errors).toHaveLength(2)
+      expect(settings.errors[0].msg).toMatch(/boom repo-2/)
+    })
+  })
 }) // Settings Tests
