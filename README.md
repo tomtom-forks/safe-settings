@@ -1,3 +1,5 @@
+> **TomTom fork** of safe-settings (upstream 2.1.18 + TomTom patches). Never open PRs against upstream from here. Branches, tags, image builds and the TomTom patch set: see [TOMTOM.md](TOMTOM.md).
+
 # 🛡️ GitHub Safe-Settings
 
 [![Create a release](https://github.com/github/safe-settings/actions/workflows/create-release.yml/badge.svg)](https://github.com/github/safe-settings/actions/workflows/create-release.yml)
