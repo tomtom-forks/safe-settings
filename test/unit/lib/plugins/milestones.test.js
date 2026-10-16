@@ -4,7 +4,8 @@ describe('Milestones', () => {
   let github
 
   function configure (config) {
-    return new Milestones(github, { owner: 'bkeepers', repo: 'test' }, config)
+    const log = { debug: jest.fn(), error: console.error }
+    return new Milestones(undefined, github, { owner: 'bkeepers', repo: 'test' }, config, log, [])
   }
 
   beforeEach(() => {
@@ -36,7 +37,8 @@ describe('Milestones', () => {
         { title: 'no-change', description: 'no-change-description', due_on: '2019-03-29T07:00:00Z', state: 'open' },
         { title: 'new-description', description: 'modified-description' },
         { title: 'new-state', state: 'closed' },
-        { title: 'added' }
+        // 'title' is a name field (TomTom 742fc40), and Diffable skips an entry with only name fields.
+        { title: 'added', description: 'added-description' }
       ])
 
       await plugin.sync()
@@ -50,7 +52,8 @@ describe('Milestones', () => {
       expect(github.issues.createMilestone).toHaveBeenCalledWith({
         owner: 'bkeepers',
         repo: 'test',
-        title: 'added'
+        title: 'added',
+        description: 'added-description'
       })
 
       expect(github.issues.updateMilestone).toHaveBeenCalledWith({
