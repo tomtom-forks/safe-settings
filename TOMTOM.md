@@ -64,6 +64,7 @@ Oldest first; the three rebase-record commits share one row.
 | `c1216de` | branches | Always send `required_status_checks`, so branch protection no longer fails with a 422. |
 | `fefb710` | settings, autolinks | Bounded repo worker pool; `await` on autolink create so its errors are caught; `RECONCILE_DONE` marker. |
 | `2a5dbaa` | settings | A failing repo is logged and counted instead of killing a pool worker. |
+| (next tag) | collaborators | Members only: a configured collaborator who is not an organization member is never invited as an outside collaborator, and their invitation or repo access is removed. Organization access comes only from the access package (SCIM); after the 2026-10-15 offboarding, `member` events from SCIM made safe-settings re-invite leavers. `COLLABORATORS_MEMBERS_ONLY` (§4), `COLLABORATOR_NOT_MEMBER` (§5). |
 
 Runtime delta: `lib/settings.js`, `lib/env.js`, `lib/mergeDeep.js`, `lib/plugins/{autolinks,branches,collaborators,environments,labels,teams}.js`.
 
@@ -73,6 +74,7 @@ Runtime delta: `lib/settings.js`, `lib/env.js`, `lib/mergeDeep.js`, `lib/plugins
 |---|---|---|
 | `FEATURE_CREATE_TEAMS_IF_NOT_EXIST` | `false` | Only the string `true` lets the teams plugin create a missing team. Otherwise the team is skipped with the info log `Feature to create teams is disabled. Team <name> not found, skipping.` |
 | `SS_REPO_CONCURRENCY` | `4` | Maximum number of repos processed at once during org-wide and suborg syncs. Unset, invalid or `0` → 4; negative → 1. |
+| `COLLABORATORS_MEMBERS_ONLY` | `true` | Unless `false`, the collaborators plugin checks organization membership (`GET /orgs/{org}/memberships/{user}`, state `active`) once per user per sync run and leaves non-members, including pending organization invitations, out of the desired state: no invitation, and Diffable removes their pending invitation or direct access. Members are managed as before. If the check fails, the repo's collaborators are not changed and the error is logged (an `ERROR` row in a PR check). `false` restores the upstream behaviour (outside collaborator invitations). |
 
 All other variables are as upstream (see README).
 
@@ -82,6 +84,7 @@ All other variables are as upstream (see README).
 |---|---|---|
 | `RECONCILE_DONE errors=<n>` | info | End of every non-dry-run sync (org, suborg, selected repos, single repo), including after a caught error. Each webhook event logs its own marker and events overlap, so **correlate by the `id` field** on the log line (the webhook delivery id). **If an event's run starts and its marker never appears, the run died or hung.** `<n>` = errors collected in that run; a non-zero count is common and is not by itself a failure. Not logged in dry-run (PR check) mode, or for a single-repo sync that stops early on a restricted repo. |
 | `SUBORG_CONFLICT repo=<repo> winner=<path> loser=<path>` | warn | While suborg configs load, when the same repo name (or the identical glob string) is stored by more than one suborg file (via `suborgrepos`, `suborgteams` or `suborgproperties`). Repeats on every run until the config is fixed. Overlapping but different globs (e.g. `foo-*` vs `foo-bar`) are **not** detected: the earliest-loaded matching entry wins silently. |
+| `COLLABORATOR_NOT_MEMBER repo=<owner>/<repo> user=<login>` | warn | During a collaborators sync, for each collaborator configured for the repo who is not an organization member, so safe-settings does not invite them and removes their invitation or access. Repeats on every sync of that repo until the entry is removed from the config. In a PR check the same users are listed under *Collaborators (not organization members)*. |
 
 ## 6. Building an image
 
