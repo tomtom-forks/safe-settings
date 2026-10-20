@@ -32,6 +32,11 @@ describe('env', () => {
       const FULL_SYNC_NOP = envTest.FULL_SYNC_NOP
       expect(FULL_SYNC_NOP).toEqual(false)
     })
+
+    it('loads default TRANSPARENCY_TEAM if not passed', () => {
+      const TRANSPARENCY_TEAM = envTest.TRANSPARENCY_TEAM
+      expect(TRANSPARENCY_TEAM).toEqual('all-employees')
+    })
   })
 
   describe('load override values', () => {
