@@ -6,6 +6,7 @@ const Glob = require('./lib/glob')
 const ConfigManager = require('./lib/configManager')
 const NopCommand = require('./lib/nopcommand')
 const env = require('./lib/env')
+const { grantTransparencyTeam } = require('./lib/transparency')
 
 let deploymentConfig
 
@@ -608,6 +609,8 @@ module.exports = (robot, { getRouter }, Settings = require('./lib/settings')) =>
     const { payload } = context
     const { sender } = payload
     robot.log.debug('repository.created payload from ', JSON.stringify(sender))
+    // TomTom: before the sync, so the repo's own settings still decide which teams keep access
+    await grantTransparencyTeam(context.octokit, payload.repository, context.log)
     return syncSettings(false, context)
   })
 
