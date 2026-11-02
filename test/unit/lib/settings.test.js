@@ -590,4 +590,254 @@ repository:
       expect(settings.errors[0].msg).toMatch(/boom repo-2/)
     })
   })
+
+  describe('archived repositories (TomTom rc.9: skip archived repos)', () => {
+    const Archive = require('../../../lib/plugins/archive')
+    let originalPlugins
+    let repoPluginSync
+    let labelsPluginSync
+    let teamsPluginSync
+    let collaboratorsPluginSync
+    let getRepoSpy
+    let update
+
+    function setup (config, repoConfigs = {}, subOrgConfigs = {}) {
+      const settings = createSettings(Object.assign({ restrictedRepos: { exclude: [] } }, config))
+      settings.subOrgConfigs = subOrgConfigs
+      settings.repoConfigs = repoConfigs
+      settings.subOrgConfigMap = undefined
+      update = jest.fn().mockResolvedValue({ data: {} })
+      update.endpoint = jest.fn().mockReturnValue({})
+      settings.github = { repos: { update } }
+      return settings
+    }
+
+    beforeEach(() => {
+      originalPlugins = { ...Settings.PLUGINS }
+      repoPluginSync = jest.fn().mockResolvedValue([])
+      labelsPluginSync = jest.fn().mockResolvedValue([])
+      teamsPluginSync = jest.fn().mockResolvedValue([])
+      collaboratorsPluginSync = jest.fn().mockResolvedValue([])
+      Settings.PLUGINS.repository = jest.fn().mockImplementation(() => ({ sync: repoPluginSync }))
+      Settings.PLUGINS.labels = jest.fn().mockImplementation(() => ({ sync: labelsPluginSync }))
+      Settings.PLUGINS.teams = jest.fn().mockImplementation(() => ({ sync: teamsPluginSync }))
+      Settings.PLUGINS.collaborators = jest.fn().mockImplementation(() => ({ sync: collaboratorsPluginSync }))
+      getRepoSpy = jest.spyOn(Archive.prototype, 'getRepo')
+        .mockRejectedValue(new Error('unexpected GET /repos/{owner}/{repo}'))
+    })
+
+    afterEach(() => {
+      Object.assign(Settings.PLUGINS, originalPlugins)
+      getRepoSpy.mockRestore()
+    })
+
+    it('skips an archived repo from the listing without any API call', async () => {
+      const settings = setup({ repository: { has_wiki: false }, labels: [{ name: 'bug' }] })
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(getRepoSpy).not.toHaveBeenCalled()
+      expect(Settings.PLUGINS.repository).not.toHaveBeenCalled()
+      expect(labelsPluginSync).not.toHaveBeenCalled()
+      expect(settings.archivedSkipped.size).toBe(1)
+    })
+
+    it('suborg archived: true (zzz_archived shape) + listed archived: skipped, no GET', async () => {
+      const settings = setup({ repository: { has_wiki: false } }, {}, { old: { repository: { archived: true } } })
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(getRepoSpy).not.toHaveBeenCalled()
+      expect(settings.archivedSkipped.size).toBe(1)
+    })
+
+    it("archived: 'true' (string) + listed archived: skipped, no GET", async () => {
+      const settings = setup({ repository: { archived: 'true' } })
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(getRepoSpy).not.toHaveBeenCalled()
+      expect(settings.archivedSkipped.size).toBe(1)
+    })
+
+    it('suborg archived: false + listed archived: unarchived, not skipped', async () => {
+      getRepoSpy.mockResolvedValue({ archived: true })
+      const settings = setup({ repository: { has_wiki: false } }, {}, { old: { repository: { archived: false } } })
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(update).toHaveBeenCalledWith({ owner: 'org', repo: 'old', archived: false })
+      expect(repoPluginSync).toHaveBeenCalled()
+      expect(settings.archivedSkipped.size).toBe(0)
+    })
+
+    it('suborg true, repo file false: repo file wins (unarchive)', async () => {
+      getRepoSpy.mockResolvedValue({ archived: true })
+      const settings = setup({ repository: { has_wiki: false } }, { 'old.yml': { repository: { archived: false } } }, { old: { repository: { archived: true } } })
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(update).toHaveBeenCalledWith({ owner: 'org', repo: 'old', archived: false })
+    })
+
+    it('suborg false, repo file true: repo file wins (skip, no GET)', async () => {
+      const settings = setup({ repository: { has_wiki: false } }, { 'old.yml': { repository: { archived: true } } }, { old: { repository: { archived: false } } })
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(getRepoSpy).not.toHaveBeenCalled()
+      expect(settings.archivedSkipped.size).toBe(1)
+    })
+
+    it.each([false, 'false'])('archived: %p unarchives BEFORE the settings PATCH, with the bare repo ref', async (desired) => {
+      getRepoSpy.mockResolvedValue({ archived: true })
+      const settings = setup({ repository: { has_wiki: false } }, { 'old.yml': { repository: { archived: desired } } })
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(update).toHaveBeenCalledWith({ owner: 'org', repo: 'old', archived: false })
+      expect(update.mock.invocationCallOrder[0]).toBeLessThan(repoPluginSync.mock.invocationCallOrder[0])
+      expect(Settings.PLUGINS.repository.mock.calls[0][2]).toEqual({ owner: 'org', repo: 'old' })
+    })
+
+    it('webhook path (no listing flag): one GET, then skips an archived repo', async () => {
+      getRepoSpy.mockResolvedValue({ archived: true })
+      const settings = setup({ repository: { has_wiki: false }, labels: [{ name: 'bug' }] })
+      await settings.updateRepos({ owner: 'org', repo: 'old' })
+      expect(getRepoSpy).toHaveBeenCalledTimes(1)
+      expect(Settings.PLUGINS.repository).not.toHaveBeenCalled()
+      expect(labelsPluginSync).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+      expect(settings.archivedSkipped.size).toBe(1)
+    })
+
+    it('webhook path, repo GET 404s (null): not counted as archived, settings still applied', async () => {
+      getRepoSpy.mockResolvedValue(null)
+      const settings = setup({ repository: { has_wiki: false }, labels: [{ name: 'bug' }] })
+      await settings.updateRepos({ owner: 'org', repo: 'gone' })
+      expect(repoPluginSync).toHaveBeenCalledTimes(1)
+      expect(labelsPluginSync).toHaveBeenCalledTimes(1)
+      expect(settings.archivedSkipped.size).toBe(0)
+    })
+
+    it('active repo (listed archived: false) whose config says archived: true is archived after its settings', async () => {
+      getRepoSpy.mockResolvedValue({ archived: false })
+      const settings = setup({ repository: { has_wiki: false } }, { 'new.yml': { repository: { archived: true } } })
+      await settings.updateRepos({ owner: 'org', repo: 'new' }, false)
+      expect(repoPluginSync).toHaveBeenCalled()
+      expect(update).toHaveBeenCalledWith({ owner: 'org', repo: 'new', archived: true })
+      expect(repoPluginSync.mock.invocationCallOrder[0]).toBeLessThan(update.mock.invocationCallOrder[0])
+      expect(settings.archivedSkipped.size).toBe(0)
+    })
+
+    it('active repo: settings are applied as before', async () => {
+      getRepoSpy.mockResolvedValue({ archived: false })
+      const settings = setup({ repository: { has_wiki: false }, labels: [{ name: 'bug' }] })
+      await settings.updateRepos({ owner: 'org', repo: 'live' }, false)
+      expect(repoPluginSync).toHaveBeenCalledTimes(1)
+      expect(labelsPluginSync).toHaveBeenCalledTimes(1)
+      expect(update).not.toHaveBeenCalled()
+    })
+
+    it('no repository config: listed active repo costs no GET, archived webhook repo is skipped', async () => {
+      const settings = setup({ labels: [{ name: 'bug' }] })
+      await settings.updateRepos({ owner: 'org', repo: 'live' }, false)
+      expect(getRepoSpy).not.toHaveBeenCalled()
+      expect(labelsPluginSync).toHaveBeenCalledTimes(1)
+
+      getRepoSpy.mockResolvedValue({ archived: true })
+      await settings.updateRepos({ owner: 'org', repo: 'old' })
+      expect(getRepoSpy).toHaveBeenCalledTimes(1)
+      expect(labelsPluginSync).toHaveBeenCalledTimes(1)
+      expect(settings.archivedSkipped.size).toBe(1)
+    })
+
+    it('no repository config + listed archived: skipped, no GET, no child plugin', async () => {
+      const settings = setup({ labels: [{ name: 'bug' }] })
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(getRepoSpy).not.toHaveBeenCalled()
+      expect(labelsPluginSync).not.toHaveBeenCalled()
+      expect(settings.archivedSkipped.size).toBe(1)
+    })
+
+    it('archived repo in a team suborg: only teams are synced, from the listing with no GET', async () => {
+      const settings = setup({ repository: { has_wiki: false } }, {},
+        { 'old*': { teams: [{ name: 'core', permission: 'pull' }], labels: [{ name: 'bug' }] } })
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(getRepoSpy).not.toHaveBeenCalled()
+      expect(teamsPluginSync).toHaveBeenCalledTimes(1)
+      expect(Settings.PLUGINS.teams.mock.calls[0][3]).toEqual([{ name: 'core', permission: 'pull' }])
+      expect(labelsPluginSync).not.toHaveBeenCalled()
+      expect(Settings.PLUGINS.repository).not.toHaveBeenCalled()
+      expect(settings.archivedSkipped.size).toBe(1)
+    })
+
+    it('archived repo with a repo file: teams and collaborators are synced after one GET, nothing else', async () => {
+      getRepoSpy.mockResolvedValue({ archived: true })
+      const settings = setup({ repository: { has_wiki: false } }, {
+        'old.yml': { teams: [{ name: 'core', permission: 'push' }], collaborators: [{ username: 'u', permission: 'pull' }], labels: [{ name: 'bug' }] }
+      })
+      await settings.updateRepos({ owner: 'org', repo: 'old' })
+      expect(getRepoSpy).toHaveBeenCalledTimes(1)
+      expect(teamsPluginSync).toHaveBeenCalledTimes(1)
+      expect(collaboratorsPluginSync).toHaveBeenCalledTimes(1)
+      expect(labelsPluginSync).not.toHaveBeenCalled()
+      expect(Settings.PLUGINS.repository).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+    })
+
+    it('dry run (nop) skips archived repos the same way', async () => {
+      const settings = setup({ repository: { has_wiki: false } })
+      settings.nop = true
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(getRepoSpy).not.toHaveBeenCalled()
+      expect(Settings.PLUGINS.repository).not.toHaveBeenCalled()
+      expect(settings.results).toHaveLength(0)
+    })
+
+    it('dry run with archived: false reports the unarchive and the settings, writes nothing', async () => {
+      getRepoSpy.mockResolvedValue({ archived: true })
+      const settings = setup({ repository: { has_wiki: false } }, { 'old.yml': { repository: { archived: false } } })
+      settings.nop = true
+      await settings.updateRepos({ owner: 'org', repo: 'old' }, true)
+      expect(update).not.toHaveBeenCalled()
+      expect(settings.results.map(r => r.plugin)).toContain('Archive')
+      expect(settings.results.filter(r => r.type === 'ERROR')).toEqual([])
+      expect(repoPluginSync).toHaveBeenCalledTimes(1)
+    })
+
+    it('lists the installation once per run, 100 per page, and passes the archived flag', async () => {
+      const settings = setup({})
+      const repositories = [
+        { owner: { login: 'org' }, name: 'live', archived: false },
+        { owner: { login: 'org' }, name: 'old', archived: true }
+      ]
+      const github = { paginate: jest.fn().mockResolvedValue(repositories) }
+      settings.checkAndProcessRepo = jest.fn().mockResolvedValue(null)
+      await settings.eachRepositoryRepos(github, stubContext.log)
+      await settings.eachRepositoryRepos(github, stubContext.log)
+      expect(github.paginate).toHaveBeenCalledTimes(1)
+      expect(github.paginate).toHaveBeenCalledWith('GET /installation/repositories', { per_page: 100 })
+      expect(settings.checkAndProcessRepo).toHaveBeenCalledWith('org', 'live', false)
+      expect(settings.checkAndProcessRepo).toHaveBeenCalledWith('org', 'old', true)
+    })
+
+    it('syncSelectedRepos: two changed suborgs list the installation once, a repo is counted once', async () => {
+      const paginate = jest.fn().mockResolvedValue([{ owner: { login: 'org' }, name: 'old', archived: true }])
+      const context = Object.assign({}, stubContext, { octokit: { paginate }, repo: () => ({ owner: 'org', repo: 'admin' }) })
+      const spies = [
+        jest.spyOn(Settings.prototype, 'getSubOrgConfigs').mockResolvedValue({ old: { repository: { archived: true } } }),
+        jest.spyOn(Settings.prototype, 'getRepoConfigs').mockResolvedValue({}),
+        jest.spyOn(Settings.prototype, 'createCheckRun').mockResolvedValue()
+      ]
+      try {
+        await Settings.syncSelectedRepos(false, context, [], ['.github/suborgs/a.yml', '.github/suborgs/b.yml'], { restrictedRepos: { exclude: [] }, repository: {} }, 'main')
+      } finally {
+        spies.forEach(s => s.mockRestore())
+      }
+      expect(paginate).toHaveBeenCalledTimes(1)
+      expect(stubContext.log.info).toHaveBeenCalledWith('RECONCILE_DONE errors=0 archived_skipped=1')
+    })
+
+    it('does not put the archived flag into the repo object (it is merged into the PATCH payload)', async () => {
+      const settings = setup({})
+      settings.updateRepos = jest.fn().mockResolvedValue(null)
+      await settings.checkAndProcessRepo('org', 'old', true)
+      expect(settings.updateRepos).toHaveBeenCalledWith({ owner: 'org', repo: 'old' }, true)
+    })
+
+    it('RECONCILE_DONE reports the number of skipped archived repos', async () => {
+      const settings = setup({})
+      settings.archivedSkipped = new Set(['a', 'b', 'c'])
+      settings.createCheckRun = jest.fn().mockResolvedValue()
+      await settings.handleResults()
+      expect(stubContext.log.info).toHaveBeenCalledWith('RECONCILE_DONE errors=0 archived_skipped=3')
+    })
+  })
 }) // Settings Tests
