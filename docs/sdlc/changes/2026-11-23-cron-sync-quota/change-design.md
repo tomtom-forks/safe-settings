@@ -17,9 +17,9 @@
 
 ## Summary 🔍
 
-Prod runs webhook-only because a full sync was estimated at 100–200k API calls against the App's 15,000/hour budget. Measured on rc.9, one full sync of prod costs 83,109 calls, and 34,578 of them are writes that change nothing: branch protection rewritten on every run, Dependabot alerts re-enabled, DELETEs of teams whose access comes from an organization role, and collaborator additions that archived repos refuse. Two replicas each running it would double that.
+Prod runs webhook-only because a full sync was estimated at 100–200k API calls against the App's 15,000/hour budget. Extrapolated from a measured dev run and prod logs, one full sync of prod on rc.9 costs ~83,100 calls, and ~34,000 of them are writes that change nothing: branch protection rewritten on every run, Dependabot alerts re-enabled, DELETEs of teams whose access comes from an organization role, and collaborator additions that archived repos refuse. Two replicas each running it would double that.
 
-This design runs one full sync per night from a Kubernetes CronJob and paces it: before each repo it checks the quota, and below 5,000 calls left in the hour it waits for the reset, so webhooks keep a third of the budget (their night peak is 2,461 calls/h). Five cuts remove the waste: one read per repo, flattened protection flags, read-before-write for Dependabot alerts, one grant list per org-role team, and no collaborator sync on archived repos. A run then costs ~36,200 calls and ~600 writes and needs ~3.7 of the 12 night hours. The same pacing covers the full syncs that `settings.yml` merges start, which exhausted the quota for 8 hours on 11-04. Exit codes, end-of-run lines and check runs report truthfully whether a run covered every repo. Prod is not changed in this phase; turning it on is a later, NOP-first rollout.
+This design runs one full sync per night from a Kubernetes CronJob and paces it: before each repo it checks the quota, and below 5,000 calls left in the hour it waits for the reset, so webhooks keep a third of the budget (their night peak is 2,461 calls/h). Five cuts remove the waste: one read per repo, flattened protection flags, read-before-write for Dependabot alerts, grant checks before team DELETEs, and no collaborator writes on archived repos. A run then costs ~37,300 calls and ~600 writes and needs ~3.8 of the 11 hours it may take. The same pacing covers the full syncs that `settings.yml` merges start; the PR dry runs of such PRs stay unpaced, a known residual risk. Exit codes, end-of-run lines and check runs report truthfully whether a run covered every repo. Prod is not changed in this phase; turning it on is a later, NOP-first rollout.
 
 ## Background & problem 🔍
 
@@ -74,8 +74,9 @@ Dev (`tomtomsptesting`) has 209 repos: 160 active, 48 archived, 1 restricted. Ea
 | 100 GET | `/orgs/{o}/security-managers` | Read once per repo with teams, though it is one org-wide list (lib/plugins/teams.js:40) |
 | 88 DELETE | `/orgs/{o}/teams/{t}/repos/{o}/{r}` | A team that holds access through an organization role: GitHub lists it on every repo, but it has no repo-level grant there, so the DELETE returns 204 and changes nothing (see §4) |
 | 12 GET, 12 PUT | one team grant | Two dev configs disagree about it (dev only) |
-| 92 GET, 5 writes | listing, config, org rulesets, autolinks, topics, labels, rulesets, environments, collaborators, check run | As configured; the 5 writes are ruleset 4xx |
+| 92 GET, 5 writes | listing, config (19 of them 304), org rulesets, autolinks, topics, labels, rulesets, environments, collaborators, the check run's commit lookup, and 1 App-JWT installation lookup | As configured; the 5 writes are ruleset 4xx |
 | 1 POST | `/repos/{o}/admin/check-runs` | End-of-run check |
+| 1 POST | `/app/installations/{id}/access_tokens` | Installation token, on the App's own limit |
 
 **4. Extrapolation to prod**
 
@@ -108,12 +109,12 @@ Prod inputs: [`analysis/coverage.js`](analysis/coverage.js) resolves every repo'
 | Team PUT + GET by name | 112 a day, one-off changes | 224 | 224 | |
 | Autolinks, topics, labels | 1,981 / 1,077 / 864 repos | 3,922 | 3,922 | |
 | Collaborators on active repos | 658 repos, 303 distinct users | 1,619 | 1,619 | |
-| Collaborators on archived repos | 542 repos, 2,710 entries | 1,084 GET + 2,710 PUT (all 403) | 0 | (d) |
+| Collaborators on archived repos | 542 repos, 2,710 entries | 1,084 GET + 2,710 PUT (all 403) | 1,084 GET, 0 PUT | (d) |
 | Rulesets | 708 repos, 1,120 rulesets; 0.355 writes per sync | 1,828 + 251 | 1,828 + 251 | |
 | Environments | 19 repos, 120 environments | 379 | 379 | |
 | Drift writes (repo PATCH, labels, topics, autolinks) | 211 a day, one-off | 211 | 211 | |
 | Check run | | 2 | 0 | |
-| **Charged calls** | | **83,109**, of which 34,578 writes | **36,190**, of which 582 writes | |
+| **Charged calls** | | **83,109**, of which 34,578 writes | **37,274**, of which 582 writes | |
 
 Sources for the rates (prod Loki 11-14 → 11-23 unless noted):
 
@@ -126,18 +127,20 @@ Sources for the rates (prod Loki 11-14 → 11-23 unless noted):
 
 **5. Verdict**
 
-The budget is 15,000 per window. A floor of 5,000 (33%) kept free for webhooks lets a paced run spend up to 10,000 per window, minus what the webhooks use in it.
+The budget is 15,000 per window. A floor of 5,000 (33%) kept free for webhooks lets a paced run spend up to 10,000 per window, minus what the webhooks use in it. A run may take 11 hours (CD-D-12).
 
-| Run | Charged calls | Writes, and their minimum time at 1/s | Hours at night under the floor (10,000 − p95 244 per h) | Fits 18:00–06:00Z? |
+| Run | Charged calls | Writes, and their minimum time at 1/s | Hours at night under the floor (10,000 − p95 244 per h) | Fits in 11 hours? |
 |---|---|---|---|---|
 | Today, in-process `CRON` on both replicas | 166,218 | 2 × 34,578 | 17.0 | No |
 | Today, one run | 83,109 | 34,578, 9.6 h | 8.5 | Barely: the writes alone take 9.6 h |
-| After the five cuts, one CronJob run | 36,190 | 582, 10 min | 3.7 (4.8 if every hour were the worst night hour, 2,461) | Yes, 2.5–3.2× margin |
-| After the cuts, a paced `settings.yml` merge in the daytime (warm config, check run) | ~34,300 | ~580 | 5.3 at the weekday p95 (3,529/h) | n/a |
+| After the five cuts, one CronJob run | 37,274 | 582, 10 min | 3.8 (4.9 if every hour were the worst night hour, 2,461) | Yes, 2.2–2.9× margin |
+| After the cuts, a paced `settings.yml` merge in the daytime (warm config, check run) | ~35,400 | ~580 | 5.5 at the weekday p95 (3,529/h) | n/a |
 
-Two replicas each running today's tick reproduce the original 100–200k estimate. One paced run after the cuts needs about 3.7 of the 12 night hours, so there is no gap left to close: option (a) of the brief applies once the run is paced and runs once instead of once per replica. The cuts are what make it comfortable. They take the run from 83,109 to ~36k calls and from 34,578 to ~600 writes, and stop a nightly rewrite of settings that never change.
+Two replicas each running today's tick reproduce the original 100–200k estimate. One paced run after the cuts needs about 3.8 hours, so the budget already allows a nightly run with margin; nothing has to be cut first. The cuts are what make it comfortable. They take the run from ~83,100 to ~37,300 calls and from 34,578 to ~600 writes, and stop a nightly rewrite of settings that never change.
 
 The starting point of keeping ≥ 30% free for webhooks holds. 5,000 is 33% of the budget, twice the worst night hour (2,461) and 1.4× the weekday p95 (3,529). It does not cover the weekday p99 (5,934). That matters only for the paced merge-triggered runs, which today drain the quota completely.
+
+One part of the 11-04 burst stays: the PR dry run of a `settings.yml` PR is a full read pass that this design does not pace (CD-D-5). After the cuts it costs ~36,700 reads (today ~48,500), about 2.4 hourly budgets, on every push to such a PR.
 
 ```mermaid
 flowchart LR
@@ -164,52 +167,58 @@ flowchart LR
 
 ### Goals
 
-**G1: A full sync writes nothing to a repo that already matches its config (cuts a, b, c)**
+**G1: A sync writes nothing to a repo that already matches its config (cuts a, b, c)**
 - [ ] G1-AC1 — A protected branch whose live protection matches the config, with `allow_force_pushes`, `allow_fork_syncing`, `block_creations` and `lock_branch` returned as `{enabled: <bool>}` objects, gets no PUT. · `verify: nock test; GET protection returns the object form of the configured booleans; any PUT fails the test`
 - [ ] G1-AC2 — A real difference in one of those four flags still gets exactly one PUT, carrying the configured value. · `verify: nock test; config allow_force_pushes: true, live {enabled: false}`
 - [ ] G1-AC3 — With `enableVulnerabilityAlerts: true`, a 204 from `GET /repos/{o}/{r}/vulnerability-alerts` leads to no PUT and a 404 to exactly one PUT. With `false`, a 404 leads to no DELETE and a 204 to exactly one DELETE. · `verify: nock test, four cases`
-- [ ] G1-AC4 — A team that the repo's team list shows but that has no repo-level grant (the repo is absent from `GET /orgs/{org}/teams/{slug}/repos`) is not deleted. A team that has a repo-level grant and is not in the config is deleted once. · `verify: nock test, both cases`
-- [ ] G1-AC5 — A team's grant list is read at most once per run, and only for a team about to lose a grant. · `verify: nock test; three repos that all list the same org-role team; one paginated grant listing in total`
-- [ ] G1-AC6 — In a full sync, an unchanged active repo whose config has branch protection, teams and Dependabot alerts costs exactly: 1 `GET /repos/{o}/{r}`, 1 GET protection per protected branch, 1 GET vulnerability-alerts, 1 GET teams (plus follow-up pages), and no write. The run adds 1 GET security managers and the grant listings of G1-AC5. · `verify: nock test with nock.disableNetConnect(); the test lists every expected interceptor with its count and fails on any unmatched or missing request`
+- [ ] G1-AC4 — A team that the repo's team list shows but that has no repo-level grant on the repo is not deleted. A team that has a repo-level grant and is not in the config is deleted once. Both hold in a full sync and in a single-repo sync. · `verify: nock tests; full sync: the repo is absent from / present in GET /orgs/{org}/teams/{slug}/repos; single-repo sync: GET /orgs/{org}/teams/{slug}/repos/{o}/{r} answers 404 / 204`
+- [ ] G1-AC5 — In a run that walks the installation listing (a full or suborg sync), a team's grant list is read at most once, and only for a team about to lose a grant. A single-repo sync instead checks each such team with one `GET /orgs/{org}/teams/{slug}/repos/{o}/{r}` and reads no grant list. · `verify: nock tests; three repos that all list the same org-role team → one paginated grant listing; one single-repo sync → one per-repo check per team`
+- [ ] G1-AC6 — If a team's grant list cannot be read, that run checks the team per repo instead. If a per-repo check fails (any answer other than 204 or 404), the DELETE goes ahead as today. · `verify: nock tests; the grant listing answers 403 → per-repo checks are made; a per-repo check answers 403 → the DELETE is sent`
+- [ ] G1-AC7 — In a full sync, an unchanged active repo whose config has branch protection, teams and Dependabot alerts costs exactly: 1 `GET /repos/{o}/{r}`, 1 GET protection per protected branch, 1 GET vulnerability-alerts, 1 GET teams (plus follow-up pages), and no write. The run adds 1 GET security managers and the grant listings of G1-AC5. · `verify: nock test with nock.disableNetConnect(); the test lists every expected interceptor with its count and fails on any unmatched or missing request`
+- [ ] G1-AC8 — In NOP mode cuts (a)–(c) make the same reads and report an intended change only where apply mode would write: an unchanged repo reports no protection PUT, alert enable or team DELETE; a repo with a real difference reports exactly that change. · `verify: nock tests in NOP mode, both cases, asserting the run's results`
 
 **G2: Each repo, and the org's security managers, are read once per run (cut e)**
 - [ ] G2-AC1 — A full sync over N active repos makes exactly N `GET /repos/{o}/{r}` calls, also when some of them have labels. · `verify: nock test, three repos, one with labels`
 - [ ] G2-AC2 — `GET /orgs/{org}/security-managers` is called once per run, however many repos sync teams. · `verify: nock test, three repos with teams`
-- [ ] G2-AC3 — After the repository plugin changes a repo in a run (a PATCH or a default-branch rename), the plugins after it in the same run see the changed repo: the branches plugin protects the new default branch name. · `verify: nock test; rename main → trunk; GET and PUT protection go to trunk`
+- [ ] G2-AC3 — After the repository plugin changes a repo in a run, the plugins after it in the same run see the change: after a PATCH they see the PATCH response, and after a default-branch rename the branches plugin protects the new name. · `verify: nock tests; PATCH changes a setting; rename main → trunk, GET and PUT protection go to trunk`
 
-**G3: Archived repos sync teams only (cut d)**
-- [ ] G3-AC1 — A full sync of an archived repo whose config has teams and collaborators calls team endpoints only, and no `/collaborators` or `/invitations` endpoint. · `verify: nock test`
-- [ ] G3-AC2 — Active repos still sync collaborators as before. · `verify: the existing collaborators tests pass unchanged`
+**G3: No collaborator writes on archived repos (cut d)**
+- [ ] G3-AC1 — On an archived repo whose config adds a collaborator or changes one's permission, a full sync makes no PUT to `/repos/{o}/{r}/collaborators/{u}`. · `verify: nock test`
+- [ ] G3-AC2 — On an archived repo, a collaborator or invitation that the config does not list is still removed (one DELETE), as today. · `verify: nock test`
+- [ ] G3-AC3 — Active repos sync collaborators as before. · `verify: the existing collaborators unit tests pass unchanged`
 
 **G4: Paced full syncs leave a quota reserve for webhooks**
 - [ ] G4-AC1 — In a paced run, when the quota reading is below the floor (default 5,000, `SS_QUOTA_FLOOR`), no new repo starts until the reading's reset time. Repos already started finish. · `verify: nock test with fake timers; responses carry x-ratelimit-remaining 4999 and a reset 60 s ahead; the next repo's first request comes only after the clock passes the reset`
 - [ ] G4-AC2 — After the reset the run reads `GET /rate_limit` and continues only at or above the floor; below it, it waits for the next reset. · `verify: nock test; /rate_limit answers 3,000 and then 14,000; the run resumes after the second`
 - [ ] G4-AC3 — At or above the floor the guard makes no API call of its own. · `verify: nock test; remaining 9,000 on every response; no /rate_limit request`
-- [ ] G4-AC4 — A paced run logs `QUOTA_GUARD floor=<f> remaining=<n> reset=<iso>` before its first repo, from a real reading. Each pause logs `QUOTA_PAUSE remaining=<n> floor=<f> resume_at=<iso>` and then `QUOTA_RESUME waited_s=<s> remaining=<n>`. · `verify: log assertions in the nock tests; the dev run of G6-AC2`
-- [ ] G4-AC5 — Without a usable reading (no rate-limit headers seen and `GET /rate_limit` failing), a paced run starts no repo; it logs `QUOTA_UNKNOWN` and retries the reading every 60 s. · `verify: nock test; /rate_limit answers 500 twice, then 200; no repo request before the 200`
-- [ ] G4-AC6 — A reading whose reset time has passed is not used; the guard reads `GET /rate_limit` instead. · `verify: nock test; a stale low reading does not cause a pause when /rate_limit answers 14,000`
-- [ ] G4-AC7 — Paced: the CronJob run, an in-process `CRON` tick, and the full sync started by a push that changes `settings.yml` or by an org-level `repository_ruleset` event. Never paced: per-repo webhook syncs, suborg and repo-file syncs, and PR dry runs. · `verify: one test per entry point; with a reading below the floor only the paced ones wait`
+- [ ] G4-AC4 — With two `core` windows open (different reset times), the guard uses the lower `remaining`. · `verify: nock test; responses alternate remaining 12,000 (reset +50 min) and 4,000 (reset +10 min); the run pauses until the earlier reset`
+- [ ] G4-AC5 — A reading whose reset time has passed is not used; the guard reads `GET /rate_limit` instead. · `verify: nock test; a stale low reading does not cause a pause when /rate_limit answers 14,000`
+- [ ] G4-AC6 — Without a usable reading (no rate-limit headers seen and `GET /rate_limit` failing), a paced run starts no repo; it logs `QUOTA_UNKNOWN` and retries the reading every 60 s. The guard's own `GET /rate_limit` is sent without automatic retries, so one failure shows at once. · `verify: nock test with fake timers; /rate_limit answers 500 once, then 200 after 60 s; QUOTA_UNKNOWN is logged and no repo request comes before the 200`
+- [ ] G4-AC7 — A paced run logs `QUOTA_GUARD floor=<f> remaining=<n> reset=<iso>` before its first repo, from a real reading. Each pause logs `QUOTA_PAUSE remaining=<n> floor=<f> resume_at=<iso>` and then `QUOTA_RESUME waited_s=<s> remaining=<n>`. · `verify: log assertions in the nock tests; the dev run of G6-AC2`
+- [ ] G4-AC8 — Paced: the CronJob run, an in-process `CRON` tick, and the full sync started by a push that changes `settings.yml` or by an org-level `repository_ruleset` event. Never paced: per-repo webhook syncs, suborg and repo-file syncs, and PR dry runs. · `verify: one unit test per entry point, loading index.js with a fake robot and a stub Settings; with a reading below the floor only the paced ones wait`
 
 **G5: A nightly CronJob run that reports its outcome truthfully**
-- [ ] G5-AC1 — With `fullSync.enabled: true`, the chart renders one CronJob: schedule `0 18 * * *` in `Etc/UTC`, `concurrencyPolicy: Forbid`, `backoffLimit: 0`, `activeDeadlineSeconds: 43200`, `startingDeadlineSeconds: 3600`, command `node full-sync.js`, the Deployment's image, env config map and credentials secret (overridable by `fullSync.secretName`), pod annotation `karpenter.sh/do-not-disrupt: "true"`, requests 500m / 1Gi, limits 2 CPU / 6Gi, and `NODE_OPTIONS=--max-old-space-size=5120`. With default values it renders no CronJob. · `verify: helm template with and without fullSync.enabled`
-- [ ] G5-AC2 — `full-sync.js` exits 0 when the run visited every listed repo, even if some repos logged errors. It exits 1 when the installation lookup, the config load or the listing failed, or when a listed repo was not visited. · `verify: tests; listing answers 500 → exit 1; one repo's PUT answers 422 → exit 0 and errors=1`
-- [ ] G5-AC3 — Every `full-sync.js` run, NOP or not, ends with one `FULL_SYNC_DONE nop=<bool> repos=<visited>/<listed> errors=<n> paused_s=<s> duration_s=<s>` line, and `RECONCILE_DONE` gains `repos=<visited>/<listed>`. · `verify: log assertions; the dev run of G6-AC2`
-- [ ] G5-AC4 — A scheduled run posts no check run on the admin repo. · `verify: nock test; syncInstallation makes no POST check-runs and no GET commits`
-- [ ] G5-AC5 — A push-triggered run posts its check run on the pushed commit (`after` in the push payload), not on the admin repo's newest commit when the run ends. · `verify: nock test; push with after = sha1; head_sha is sha1 and no commits listing is requested`
-- [ ] G5-AC6 — A scheduled NOP run (`FULL_SYNC_NOP=true`) ends without touching a check run or PR comment and logs each intended change as one `NOP_CHANGE plugin=<p> repo=<r> action=<summary>` line. · `verify: nock test; any check-run or comment request fails the test`
+- [ ] G5-AC1 — With `fullSync.enabled: true`, the chart renders one CronJob: schedule `0 18 * * *` in `Etc/UTC`, `concurrencyPolicy: Forbid`, `backoffLimit: 0`, `startingDeadlineSeconds: 3600`, `activeDeadlineSeconds: 39600`, command `node full-sync.js`; the Deployment's image, credentials secret and env config map; the deployment-config file (`DEPLOYMENT_CONFIG_FILE` and its ConfigMap volume) as the Deployment mounts it; container env that overrides the shared map with `CRON: ""`, `SS_QUOTA_FLOOR` from `fullSync.quotaFloor` and `FULL_SYNC_NOP` from `fullSync.nop`; pod annotation `karpenter.sh/do-not-disrupt: "true"`; requests 500m / 1Gi, limits 2 CPU / 6Gi, and `NODE_OPTIONS=--max-old-space-size=5120`. With default values it renders no CronJob. · `verify: helm template with and without fullSync.enabled`
+- [ ] G5-AC2 — The image contains `full-sync.js`. · `verify: docker build, then node -e "require.resolve('/opt/safe-settings/full-sync.js')" in the image`
+- [ ] G5-AC3 — A run is complete when the installation lookup, the config load and the repo listing succeeded and every listed repo was visited; a repo that logged an error still counts as visited. `full-sync.js` always exits explicitly, 0 when complete and 1 otherwise, also when `CRON` is set in its environment. · `verify: unit tests; listing answers 404 → exit 1; one repo's PUT answers 422 → exit 0 with errors=1; CRON="* * * * *" set → the process still exits`
+- [ ] G5-AC4 — Every `full-sync.js` run, NOP or not and also when it fails, ends with one `FULL_SYNC_DONE nop=<bool> complete=<bool> repos=<visited>/<listed> errors=<n> paused_s=<s> duration_s=<s>` line. The `RECONCILE_DONE` line of a full sync gains `repos=<visited>/<listed>`; other runs' `RECONCILE_DONE` is unchanged. · `verify: log assertions for a complete run, a failed listing (complete=false repos=0/0) and a run where syncInstallation throws`
+- [ ] G5-AC5 — A scheduled run posts no check run on the admin repo. · `verify: nock test; syncInstallation makes no POST check-runs and no GET commits`
+- [ ] G5-AC6 — A push-triggered run posts its check run on the pushed commit (`after` in the push payload), not on the admin repo's newest commit when the run ends. · `verify: nock test; push with after = sha1; head_sha is sha1 and no commits listing is requested`
+- [ ] G5-AC7 — Every other run posts its check run as today, on the admin repo's newest commit. · `verify: nock test; a repository.edited sync lists commits and posts the check run on the newest one`
+- [ ] G5-AC8 — A scheduled NOP run (`FULL_SYNC_NOP=true`) touches no check run or PR comment. Before results are deduplicated, it logs one `NOP_CHANGE plugin=<p> repo=<r> endpoint=<url>` line per intended API call (each result row that names an endpoint); rows without an endpoint (summaries, errors) produce none. · `verify: nock test; any check-run or comment request fails the test; a repo with two intended calls of one plugin logs two lines`
 
 **G6: The cost claims hold on dev before prod is touched**
-- [ ] G6-AC1 — On dev's hourly in-process cron, one pod's tick drops from 1,381 charged calls on the installation (2026-11-23 12:00Z) to at most 750 (model: 708), and from 426 writes to at most 30 (model: 17). · `verify: Loki count of one tick's GitHub request: lines on one pod, before and after the dev rollout`
-- [ ] G6-AC2 — A dev CronJob run with `SS_QUOTA_FLOOR` above dev's remaining quota (e.g. 14,500) logs at least one `QUOTA_PAUSE`, then `QUOTA_RESUME` after the reset, and ends with `FULL_SYNC_DONE nop=false repos=209/209`; the Job completes. · `verify: dev Job status and pod logs`
-- [ ] G6-AC3 — Re-running the model with dev's measured after-change counts per repo and prod's coverage gives at most 40,000 charged calls for one nightly prod run, which is at most 4.1 hours under the floor at the night p95. · `verify: analysis/tickmodel.py output`
+- [ ] G6-AC1 — On dev's hourly in-process cron, one pod's tick drops from 1,381 charged calls on the installation (2026-11-23 12:00Z) to at most 750, and from 426 writes to at most 30. `tickmodel.py` predicts 708 and 17 for dev. · `verify: Loki count of one tick's GitHub request: lines on one pod, before and after the dev rollout`
+- [ ] G6-AC2 — A dev CronJob run with `fullSync.quotaFloor` above dev's remaining quota (e.g. 14,500) logs at least one `QUOTA_PAUSE`, then `QUOTA_RESUME` after the reset, and ends with `FULL_SYNC_DONE nop=false complete=true repos=209/209`; the Job completes. · `verify: dev Job status and pod logs`
+- [ ] G6-AC3 — The measured dev tick of G6-AC1 is within 5% of `tickmodel.py`'s dev prediction (708 charged), and `tickmodel.py` with the prod inputs gives at most 40,000 charged calls for one nightly prod run, which is at most 4.1 hours under the floor at the night p95. · `verify: compare the G6-AC1 count with the model's dev output; run analysis/tickmodel.py with inputs/coverage-prod.json and inputs/rates-prod.json`
 
 ### Non-goals
 
 - Enabling the CronJob in prod or changing anything there (values, App settings). That is a later step (see Testing & verification).
+- Pacing PR dry runs. A `settings.yml` PR's dry run stays an unpaced read pass of ~36,700 calls (CD-D-5); suborg and repo-file syncs and per-repo webhook syncs stay unpaced too.
 - A cache of ETags kept across runs. The CronJob starts cold every night; its 1,894 config reads stay.
-- Pacing PR dry runs, suborg and repo-file syncs, or per-repo webhook syncs.
 - Leader election, or running `CRON` in the replicas; prod keeps `CRON: ""`. No overlap guard for in-process ticks.
-- A second GitHub App for the scheduled run. The CronJob takes its credentials from a secret named in values, so this stays a values change.
+- A second GitHub App for the scheduled run.
 - Reading Dependabot alert state for many repos at once through GraphQL (would save ~6,500 REST calls per run).
 - Spreading one run over several nights, or resuming a run that was killed.
 - Fixing dev's conflicting team config (12 PUTs per tick) or the ruleset writes that fail on every run.
@@ -218,12 +227,12 @@ flowchart LR
 
 The change has four parts: where the run happens, how it is paced, what it stops wasting, and how it reports.
 
-**1. One run per night, out of band.** A Kubernetes CronJob in the safe-settings namespace starts `node full-sync.js` at 18:00Z with the Deployment's image, env config map and credentials. `full-sync.js` calls `syncInstallation(nop, { paced: true })`. The replicas keep `CRON: ""` and serve webhooks as before. `concurrencyPolicy: Forbid` keeps one run at a time, and the 12-hour deadline ends a run by 06:00Z.
+**1. One run per night, out of band.** A Kubernetes CronJob in the safe-settings namespace starts `node full-sync.js` at 18:00Z. It uses the Deployment's image, credentials secret, env config map and deployment-config file, so it applies the same restricted repos and override validators as the webhook runs. Its container env sets `CRON: ""`, because a set `CRON` would schedule in-process ticks inside the Job (dev's shared map has one), and it sets the floor and NOP mode from `fullSync.*` values, so they never reach the replicas. The Dockerfile copies `full-sync.js` into the image. `full-sync.js` calls `syncInstallation(nop, { paced: true })` and always ends the process itself. The replicas keep `CRON: ""` and serve webhooks as before. `concurrencyPolicy: Forbid` keeps one run at a time, and the 11-hour deadline ends a run by 06:00Z even when the Job starts an hour late.
 
 **2. A quota guard in the repo loop.** `eachRepositoryRepos` (lib/settings.js:602) asks the run's guard before each repo when the run is paced. The guard is created per paced run and attaches hooks to that run's Octokit client:
 
 - *Readings.* Every response and error response (304s included) with `x-ratelimit-resource: core` updates a reading `{remaining, reset}` for its window. The effective reading is the lowest `remaining` among windows whose reset is still ahead, which also covers the two concurrent windows seen in prod headers.
-- *Decision.* At or above the floor, the guard returns at once. Below it, it logs `QUOTA_PAUSE`, sleeps until the reset plus 5 s, reads `GET /rate_limit`, and repeats until the reading is at or above the floor; then it logs `QUOTA_RESUME`. With no live reading it reads `GET /rate_limit` first; if that fails it logs `QUOTA_UNKNOWN` and retries every 60 s.
+- *Decision.* At or above the floor, the guard returns at once. Below it, it logs `QUOTA_PAUSE`, sleeps until the reset plus 5 s, reads `GET /rate_limit`, and repeats until the reading is at or above the floor; then it logs `QUOTA_RESUME`. With no live reading it reads `GET /rate_limit` first; if that fails it logs `QUOTA_UNKNOWN` and retries every 60 s. Its own `GET /rate_limit` is sent with automatic retries turned off.
 - *Scope.* All workers of the pool (4 by default) wait on the same guard, so at most 4 repos in flight overshoot the floor, by a few calls each. Two paced runs at once (the nightly run and a merge) both stop at the same floor.
 - *Callers.* `syncAllSettings` (index.js:15) takes a `paced` option. `syncInstallation` (CronJob and in-process `CRON`), the push handler's full sync (index.js:262) and the org-level `repository_ruleset` handler (index.js:339) pass `paced: true`. The PR dry run (index.js:584) and every per-repo or selected sync do not.
 
@@ -231,19 +240,21 @@ The change has four parts: where the run happens, how it is paced, what it stops
 
 - **(a) Branch protection.** `reformatAndReturnBranchProtection` (lib/plugins/branches.js:126) also flattens `allow_force_pushes`, `allow_fork_syncing`, `block_creations` and `lock_branch` from `{enabled: x}` to `x`, so an unchanged branch compares equal.
 - **(b) Dependabot alerts.** `updateSecurity` (lib/plugins/repository.js:248) reads `GET /repos/{o}/{r}/vulnerability-alerts` (204 enabled, 404 disabled) and writes only on a difference.
-- **(c) Teams with org-role access.** Before `remove` (lib/plugins/teams.js:121) deletes a team's grant, the plugin asks a per-run cache of that team's repo-level grants. The cache is filled once per run per team, on first need, from `GET /orgs/{org}/teams/{slug}/repos` (paginated, 100 per page). A repo that is not in the list gets no DELETE; the plugin logs at debug that the access comes from outside the repo.
-- **(d) Archived repos.** `ARCHIVED_REPO_SECTIONS` (lib/settings.js:16) becomes `['teams']`. GitHub refuses collaborator writes on archived repos, and team grants still work there (3 days of prod: 144 team DELETEs and 20 team PUTs on archived repos, all 204).
-- **(e) One repo read, one security-manager read.** The `Settings` instance of a run holds a repo cache: the first `GET /repos/{o}/{r}` of a repo fills it, and the archive check, the repository plugin, the branches plugin and the labels plugin read from it. The repository plugin replaces the cached repo with its PATCH or rename response, so later plugins see the change. The org's security managers are read once per run into the same instance.
+- **(c) Grant check before a team DELETE.** Before `remove` (lib/plugins/teams.js:121) deletes a team's grant, the plugin checks that the grant exists at repo level. A run that walks the installation listing (full or suborg sync) asks a per-run cache of that team's repo-level grants, filled once per team on first need from `GET /orgs/{org}/teams/{slug}/repos` (paginated, 100 per page). A single-repo sync asks `GET /orgs/{org}/teams/{slug}/repos/{o}/{r}` instead, so a webhook sync costs what it costs today minus the write. A repo without a grant gets no DELETE; the plugin logs at debug that the access comes from outside the repo. If the grant list fails, the run checks that team per repo; if a per-repo check fails, the DELETE goes ahead as today.
+- **(d) No collaborator writes on archived repos.** `ARCHIVED_REPO_SECTIONS` (lib/settings.js:16) keeps both sections, and `syncArchivedRepo` runs the collaborators plugin in a mode that makes no PUT, because GitHub refuses additions and permission changes there (`403 Repository was archived so is read-only`). It still reads collaborators and invitations, and still removes the ones the config does not list. Team grants keep working on archived repos (3 days of prod: 144 team DELETEs and 20 team PUTs there, all 204).
+- **(e) One repo read, one security-manager read.** The `Settings` instance of a run holds a repo cache: the first `GET /repos/{o}/{r}` of a repo fills it, and the archive check, the repository plugin, the branches plugin and the labels plugin read from it. When the repository plugin PATCHes the repo, the PATCH response replaces the cached repo; when it renames the default branch, the cached `default_branch` takes the new name. The org's security managers are read once per run into the same instance.
+- **NOP mode.** The cuts make some write decisions depend on a read. In NOP mode the repository plugin (lib/plugins/repository.js:115) and `Diffable` (lib/plugins/diffable.js:140) return before their pending calls finish, so they wait for those calls before returning their results; otherwise an intended change found after a read is lost, because `appendToResults` copies the array (lib/settings.js:1024).
 
 **4. Reporting the outcome.**
 
-- `eachRepositoryRepos` counts listed and visited repos. A repo counts as visited once its step ends, whether it was synced, skipped as restricted or archived, or failed with a logged error.
-- `RECONCILE_DONE` gains `repos=<visited>/<listed>`. `full-sync.js` logs `FULL_SYNC_DONE` in both modes and exits 0 only when every listed repo was visited.
-- `handleResults` (lib/settings.js:191) puts a check run only on the commit that triggered the run, which is the push's `after`. A run without a triggering commit posts none. In NOP mode, a run without a check run logs its intended changes as `NOP_CHANGE` lines instead of updating a check run. Today it would read `payload.check_run` and fail (lib/settings.js:297–318).
+- A full sync counts the repos it listed and visited, and remembers whether the installation lookup, the config load and the listing succeeded. A repo counts as visited once its step ends, whether it was synced, skipped as restricted or archived, or failed with a logged error. The run is complete when all three steps succeeded and every listed repo was visited.
+- `RECONCILE_DONE` of a full sync gains `repos=<visited>/<listed>`. `full-sync.js` logs `FULL_SYNC_DONE` with `complete=` in both modes, also when `syncInstallation` throws (`repos=0/0`), and exits 0 only for a complete run.
+- Check runs: a scheduled run posts none; a push-triggered run posts on the pushed commit (`after`); every other run posts as today, on the admin repo's newest commit (lib/settings.js:135).
+- In NOP mode a run without a check run skips the check-run update and PR comment in `handleResults` (lib/settings.js:191), which today read `payload.check_run` and `payload.repository` and would fail (lib/settings.js:297–318). Before deduplicating its results, it logs one `NOP_CHANGE` line per result row that names an endpoint.
 
 ```mermaid
 flowchart TD
-  cj["CronJob 18:00Z (Forbid, deadline 06:00Z)"] --> fs["full-sync.js"]
+  cj["CronJob 18:00Z (Forbid, deadline 11 h)"] --> fs["full-sync.js"]
   fs --> si["syncInstallation(nop, paced)"]
   push["push changing settings.yml"] --> sas["syncAllSettings(paced)"]
   si --> sas
@@ -256,23 +267,26 @@ flowchart TD
   ur --> cache["per-run caches: repo, security managers, team grants"]
   ur --> plugins["plugins with cuts a–e"]
   loop --> done["RECONCILE_DONE repos=v/l"]
-  fs --> fsd["FULL_SYNC_DONE, exit code"]
+  fs --> fsd["FULL_SYNC_DONE complete=…, exit code"]
 ```
 
 ## Components
 
 In tomtom-forks/safe-settings:
 
-- **`lib/quotaGuard.js`** (new) — readings from response headers, the floor decision, `GET /rate_limit`, the `QUOTA_*` log lines.
-- **`lib/settings.js`** — guard call and listed/visited counts in `eachRepositoryRepos`; `repos=` in `RECONCILE_DONE`; per-run caches for repos, security managers and team grants; `ARCHIVED_REPO_SECTIONS = ['teams']`; check-run placement and the NOP path without a check run in `handleResults`.
+- **`lib/quotaGuard.js`** (new) — readings from response headers, the floor decision, `GET /rate_limit` without retries, the `QUOTA_*` log lines.
+- **`lib/settings.js`** — guard call, listed/visited counts and the completion flag in `eachRepositoryRepos` and `syncAll`; `repos=` in a full sync's `RECONCILE_DONE`; per-run caches for repos, security managers and team grants; the no-PUT mode for collaborators in `syncArchivedRepo`; check-run placement, the NOP path without a check run and the `NOP_CHANGE` lines in `handleResults`.
 - **`lib/plugins/branches.js`** — flatten the four flags; read the repo from the cache.
-- **`lib/plugins/repository.js`** — read alert state before writing it; read the repo from the cache and refresh the cache after a PATCH or rename.
-- **`lib/plugins/teams.js`** — grant check before `remove`; security managers from the per-run cache.
+- **`lib/plugins/repository.js`** — read alert state before writing it; read the repo from the cache and update the cache after a PATCH or rename; in NOP mode, wait for pending calls.
+- **`lib/plugins/teams.js`** — grant check before `remove` (grant list or per-repo check, with the fallbacks); security managers from the per-run cache.
+- **`lib/plugins/collaborators.js`** — the mode without PUTs used on archived repos.
+- **`lib/plugins/diffable.js`** — in NOP mode, wait for pending changes before returning results.
 - **`lib/plugins/archive.js`, `lib/plugins/labels.js`** — read the repo from the cache.
-- **`index.js`** — `paced` option on `syncAllSettings`, set by the scheduled, push and org-ruleset full syncs; the pushed commit passed on for the check run.
-- **`full-sync.js`** — exit code from listed/visited; `FULL_SYNC_DONE`.
+- **`index.js`** — `paced` option on `syncAllSettings`, set by the scheduled, push and org-ruleset full syncs; the pushed commit passed on for the check run; the scheduled marker that suppresses the check run.
+- **`full-sync.js`** — completion from the run's flags and counts; `FULL_SYNC_DONE`; explicit exit in every case.
+- **`Dockerfile`** — copy `full-sync.js` into the image.
 - **`lib/env.js`** — `SS_QUOTA_FLOOR` (default 5000).
-- **`test/unit/lib/…`, `test/integration/…`** — nock tests for G1–G5, in the style of `test/integration/common.js` (`nock.disableNetConnect()`, `isDone()` at teardown) and `test/unit/lib/settings-archived-transport.test.js`.
+- **`test/unit/…`** — nock tests for G1–G5. CI runs only `test:unit:ci`, and the integration harness in `test/integration/common.js` fails at startup on Probot 13 (`appId option is required`), so new tests go under `test/unit`, in the style of `test/unit/lib/settings-archived-transport.test.js`. Entry-point tests load `index.js` with a fake robot (it records `robot.on` handlers) and a stub `Settings`, which `index.js` accepts as its third argument.
 - **`docs/sdlc/changes/2026-11-23-cron-sync-quota/analysis/`** — the cost model, `coverage.js` and the aggregate inputs used above.
 
 In tomtom-internal/safe-settings-deployment:
@@ -290,10 +304,10 @@ sequenceDiagram
   participant G as QuotaGuard
   participant GH as GitHub API
   W->>G: before next repo
-  G-->>W: reading 4,950 < 5,000
+  G-->>W: reading 4,950, below the floor
   Note over G: QUOTA_PAUSE remaining=4950 resume_at=reset+5s
   G->>G: sleep until the reset
-  G->>GH: GET /rate_limit (free)
+  G->>GH: GET /rate_limit (free, no retries)
   GH-->>G: remaining 14,980
   Note over G: QUOTA_RESUME waited_s=…
   G-->>W: go
@@ -304,7 +318,7 @@ sequenceDiagram
 
 | Failure | What happens | What shows it |
 |---|---|---|
-| The run is still going at 06:00Z | Kubernetes stops the pod (`DeadlineExceeded`); the next night starts again from the top of the listing, so repos late in the listing wait a day longer | Job `Failed`, no `FULL_SYNC_DONE` |
+| The run reaches its 11-hour deadline | Kubernetes stops the pod (`DeadlineExceeded`); the next night starts again from the top of the listing, so repos late in the listing wait a day longer | Job `Failed`, no `FULL_SYNC_DONE` |
 | The pod is killed (forced node expiry, OOM) | Same as above; `do-not-disrupt` stops only voluntary moves | Job `Failed`; for OOM the container's reason |
 | Webhooks spend the reserve anyway | Unchanged: the throttling plugin waits for the reset, as today | `Request quota exhausted` lines |
 | A paced merge sync and the nightly run overlap | Both stop at the floor and share what is above it; each takes longer | Two runs' `QUOTA_PAUSE` lines |
@@ -313,45 +327,48 @@ sequenceDiagram
 
 ## Testing & verification
 
-The per-goal `verify:` hints are the test plan. Two checks cut across goals.
+The per-goal `verify:` hints are the test plan; all new tests go under `test/unit` (see Components). Two checks cut across goals.
 
-**Dev, before vs after (G6).** Dev keeps its hourly in-process cron. Before: one pod's tick on 2026-11-23 12:00Z made 1,402 request lines (1,381 charged on the installation, 426 writes). After the dev rollout, count one tick on one pod the same way. Then run the dev CronJob once with a high `SS_QUOTA_FLOOR` (G6-AC2), and feed the measured per-repo counts back into the model for G6-AC3.
+**Dev, before vs after (G6).** Dev keeps its hourly in-process cron. Before: one pod's tick on 2026-11-23 12:00Z made 1,402 request lines (1,381 charged on the installation, 426 writes). After the dev rollout, count one tick on one pod the same way and compare it with the model's dev prediction. Then run the dev CronJob once with a high `fullSync.quotaFloor` (G6-AC2).
 
 **Prod enablement (a later step, not part of this change).** Each step is a separate change in safe-settings-deployment:
 
 1. Ship the fork release to prod with the CronJob template disabled. The replicas get cuts (a)–(e), the pacing of merge-triggered syncs and the check-run placement.
-2. Enable the CronJob for one night with `FULL_SYNC_NOP=true`. A NOP run makes all the reads and no writes, so it measures the real nightly cost, duration and peak memory. Its `NOP_CHANGE` lines count the drift the first real night will write.
-3. Review the NOP night: charged calls (expected ≤ 40,000), `QUOTA_PAUSE` count, `FULL_SYNC_DONE repos=15787/15787`, and the size and kind of the intended changes.
+2. Enable the CronJob for one night with `fullSync.nop: true`. A NOP run makes all the reads and no writes, so it measures the real nightly cost, duration and peak memory. Its `NOP_CHANGE` lines count the API calls the first real night will make.
+3. Review the NOP night: charged calls (expected ≤ 40,000), `QUOTA_PAUSE` count, `FULL_SYNC_DONE complete=true repos=15787/15787`, and the size and kind of the intended changes.
 4. Switch to apply. Watch the first night's writes against the NOP list, and the webhook p95 the next day.
 
 ## Decisions 🔍
 
 | ID | Title | Context | Options | Choice | Rationale | Source | Goal impact | Consequences |
 |----|-------|---------|---------|--------|-----------|--------|-------------|--------------|
-| CD-D-1 | How often, and when | A full sync repairs drift; its cost competes with webhooks | Hourly (as on dev); every 6 h (legacy); nightly; weekly | Nightly, starting 18:00Z | One paced run needs ~3.7 h at night; nights 18–06Z have a webhook p95 of 244 calls/h, weekdays 3,529 | `user` (once a night); start time `auto (prod baseline §2)` | G5-AC1 | Drift is repaired within a day; webhooks stay the fast path |
-| CD-D-2 | Where the run executes | Prod has 2 replicas and no leader election, so in-process `CRON` runs once per replica | In-process `CRON` on both replicas; leader election; a CronJob under the existing App; a CronJob under a second App with its own 15,000/h | One CronJob running `full-sync.js` under the existing App, credentials from a secret named in values | One run per night, its own memory, a Job status as the signal; with the cuts the existing budget suffices | `user` | G5-AC1 | A cron-only App later means creating the App and pointing `fullSync.secretName` at its secret; no code change |
-| CD-D-3 | How the run is paced | The throttling plugin waits only at 0 remaining, which starved webhooks on 11-04 | A fixed slice of repos per tick; spreading over N hours; rely on the throttling plugin; a dynamic floor | Before each repo, wait for the reset while the reading is below 5,000 | Adapts to the real webhook load; 5,000 is twice the worst night hour and 1.4× the weekday p95 | `user` | G4-AC1–AC6 | Run time depends on the webhook load; overshoot is bounded by the 4 repos in flight |
-| CD-D-4 | Which calls to cut | Today's run is 83,109 calls and 34,578 writes (≥ 9.6 h at 1 write/s) | None; write fixes only (a, b, d); all five (a–e); also an ETag cache kept across runs | All five | 36,190 calls and 582 writes; an ETag cache would need storage that outlives the CronJob's process | `user` | G1, G2, G3 | (d) also stops collaborator removals on archived repos, which GitHub was never seen to accept (§4) |
-| CD-D-5 | Which runs the floor paces | The 11-04 exhaustion came from four merge-triggered full syncs | Scheduled runs only; also full syncs triggered by `settings.yml` merges; also the PR dry runs | Scheduled runs and push-triggered full syncs (and the org-level ruleset event, which also starts one) | Removes the only failure mode the post-rc.9 data shows; pacing dry runs would make PR checks take hours | `user` | G4-AC7 | A `settings.yml` merge rolls out over ~3.5–5.5 h instead of exhausting the quota; a `settings.yml` PR's dry run is still an unpaced full read pass |
-| CD-D-6 | How cut (c) checks a grant | The four org-role teams appear on every repo; the approved cut checks the grant before a DELETE | Per-repo check `GET /orgs/{org}/teams/{slug}/repos/{o}/{r}` before each DELETE; one paginated grant list per team per run | Grant list per team, read on first need, cached for the run | The per-repo check would add 17,561 reads per run (~1.8 h under the floor); the four lists are 23 + 1 + 1 + 1 pages; on 2026-11-23 a listed repo answered 204 and an unlisted one 404 to the per-repo check | `auto (live GETs on prod, 2026-11-23)` | G1-AC4, G1-AC5 | A team with grants on many repos costs ⌈grants/100⌉ reads once per run. If the plan phase finds a repo where the list and the per-repo check disagree, switch to the per-repo check |
-| CD-D-7 | Where the guard's reading comes from | `GET /rate_limit` is free but adds latency; headers come with every response | `GET /rate_limit` before every repo; headers only; headers, plus `GET /rate_limit` when no reading is live or after a wait | Headers, plus `GET /rate_limit` when needed; the lowest remaining among windows still open | No extra call above the floor; two concurrent windows were seen on 11-04, and the minimum is the safe reading | `auto (11-04 headers; GitHub docs)` | G4-AC1–AC3, G4-AC6 | A reading can be up to one repo old; the floor absorbs that |
-| CD-D-8 | Guard without a reading | Headers can be missing and `GET /rate_limit` can fail | Proceed (fail open); wait and retry (fail closed) | Fail closed: log `QUOTA_UNKNOWN`, retry every 60 s | A blind run is the 11-04 failure; a stuck run is visible (deadline, Job `Failed`, `QUOTA_UNKNOWN` lines) | `auto (11-04)` | G4-AC5 | A GitHub outage stalls paced runs until the reading comes back |
-| CD-D-9 | What the exit code and end lines mean | `full-sync.js` exits 1 on any per-repo error, and dev logs `errors=12` every tick; `syncAll` catches fatal errors and still logs `RECONCILE_DONE` (lib/settings.js:22–34); NOP runs never log it | Keep; derive success from `RECONCILE_DONE`; count listed vs visited | Exit 0 only when every listed repo was visited; `FULL_SYNC_DONE` in both modes; `repos=` in `RECONCILE_DONE` | A Job that is always `Failed` is no signal; a run that died early must not look complete | `auto (code)` | G5-AC2, G5-AC3 | Per-repo errors are read from `errors=`, not from the Job status |
-| CD-D-10 | Where check runs go | `createCheckRun` (lib/settings.js:135) puts the check on the admin repo's newest commit when a run ends | Keep; a nightly check with its own name on the newest commit; none for scheduled runs, and push runs on their pushed commit | No check run for scheduled runs; push runs check their pushed commit | A merge already showed another run's green check (2026-10-14); a paced 4-hour run makes that likely; a nightly check would put a red mark (prod runs always log some errors) on the day's last merge | `auto (prod logs 2026-10-14; code)` | G5-AC4, G5-AC5 | The admin repo shows nothing about nightly runs; the Job status and the end lines do |
-| CD-D-11 | A scheduled NOP run must end cleanly | `handleResults` in NOP mode reads `payload.check_run` (lib/settings.js:297–318); a scheduled run has none | Leave it; skip the summary; log the intended changes | Log one `NOP_CHANGE` line per intended change | The prod NOP night (enablement step 2) must count the first night's writes | `auto (code)` | G5-AC6 | A first night with a lot of drift logs many lines, which Loki handles |
-| CD-D-12 | Job settings | A stuck run must not spill into the day, and a failed run must not restart in the day | No deadline; retries; a 12-hour deadline without retries | `activeDeadlineSeconds: 43200`, `backoffLimit: 0`, `Forbid`, `startingDeadlineSeconds: 3600`, `Etc/UTC` | 3.7 h expected vs 12 h available; the daytime reserve covers the p95 only | `auto (prod baseline §2)` | G5-AC1 | A killed run leaves the end of the listing to the next night |
+| CD-D-1 | How often, and when | A full sync repairs drift; its cost competes with webhooks | Hourly (as on dev); every 6 h (legacy); nightly; weekly | Nightly, starting 18:00Z | One paced run needs ~3.8 h at night; nights 18–06Z have a webhook p95 of 244 calls/h, weekdays 3,529 | `user` (once a night); start time `auto (prod baseline §2)` | G5-AC1 | Drift is repaired within a day; webhooks stay the fast path |
+| CD-D-2 | Where the run executes | Prod has 2 replicas and no leader election, so in-process `CRON` runs once per replica | In-process `CRON` on both replicas; leader election; a CronJob under the existing App; a CronJob under a second App with its own 15,000/h | One CronJob running `full-sync.js` under the existing App | One run per night, its own memory, a Job status as the signal; with the cuts the existing budget suffices | `user` | G5-AC1 | A cron-only App later needs the CronJob to take `APP_ID` and `PRIVATE_KEY` from its own values and secret (`APP_ID` sits in the shared env map today): a chart change, no code change |
+| CD-D-3 | How the run is paced | The throttling plugin waits only at 0 remaining, which starved webhooks on 11-04 | A fixed slice of repos per tick; spreading over N hours; rely on the throttling plugin; a dynamic floor | Before each repo, wait for the reset while the reading is below 5,000 | Adapts to the real webhook load; 5,000 is twice the worst night hour and 1.4× the weekday p95 | `user` | G4-AC1–AC7 | Run time depends on the webhook load; overshoot is bounded by the 4 repos in flight |
+| CD-D-4 | Which calls to cut | Today's run is ~83,100 calls and 34,578 writes (≥ 9.6 h at 1 write/s) | None; write fixes only (a, b, d); all five (a–e); also an ETag cache kept across runs | All five | ~37,300 calls and 582 writes; an ETag cache would need storage that outlives the CronJob's process | `user` | G1, G2, G3 | Webhook syncs get the same cuts; for (d) see CD-D-18 |
+| CD-D-5 | Which runs the floor paces | The 11-04 exhaustion came from four merge-triggered full syncs and the dry runs of the same PRs | Scheduled runs only; also full syncs triggered by `settings.yml` merges; also the PR dry runs | Scheduled runs and push-triggered full syncs (and the org-level ruleset event, which also starts one) | Removes the merge-triggered part of the 11-04 burst; pacing dry runs would make PR checks take hours | `user` | G4-AC8 | A `settings.yml` merge rolls out over ~3.6–5.5 h instead of exhausting the quota. A `settings.yml` PR's dry run stays an unpaced ~36,700-read pass (~2.4 hourly budgets) on every push to the PR, a known residual risk |
+| CD-D-6 | How cut (c) checks a grant | The four org-role teams appear on every repo; the approved cut checks the grant before a DELETE | Per-repo check `GET /orgs/{org}/teams/{slug}/repos/{o}/{r}` before each DELETE, in every run; one paginated grant list per team, in every run; the list in runs that walk the listing and the per-repo check in single-repo syncs | The list in runs that walk the listing, the per-repo check in single-repo syncs | In a full sync the per-repo check would add 17,561 reads (~1.8 h under the floor), while the four lists are 23 + 1 + 1 + 1 pages; in a webhook sync of one repo the lists would cost 26 reads against 4 per-repo checks. On 2026-11-23 a listed repo answered 204 and an unlisted one 404 to the per-repo check | `auto (live GETs on prod, 2026-11-23; blind review)` | G1-AC4–AC6 | A team with grants on many repos costs ⌈grants/100⌉ reads once per full run. If the plan phase finds a repo where the list and the per-repo check disagree, full runs switch to the per-repo check |
+| CD-D-7 | Where the guard's reading comes from | `GET /rate_limit` is free but adds latency; headers come with every response | `GET /rate_limit` before every repo; headers only; headers, plus `GET /rate_limit` when no reading is live or after a wait | Headers, plus `GET /rate_limit` (without retries) when needed; the lowest remaining among windows still open | No extra call above the floor; two concurrent windows were seen on 11-04, and the minimum is the safe reading | `auto (11-04 headers; GitHub docs)` | G4-AC1–AC6 | A reading can be up to one repo old; the floor absorbs that |
+| CD-D-8 | Guard without a reading | Headers can be missing and `GET /rate_limit` can fail | Proceed (fail open); wait and retry (fail closed) | Fail closed: log `QUOTA_UNKNOWN`, retry every 60 s | A blind run is the 11-04 failure; a stuck run is visible (deadline, Job `Failed`, `QUOTA_UNKNOWN` lines) | `auto (11-04)` | G4-AC6 | A GitHub outage stalls paced runs until the reading comes back |
+| CD-D-9 | What the exit code and end lines mean | `full-sync.js` exits 1 on any per-repo error, and dev logs `errors=12` every tick; `syncAll` catches fatal errors, including a failed listing, and still logs `RECONCILE_DONE` (lib/settings.js:22–34); NOP runs never log it | Keep; derive success from `RECONCILE_DONE`; listed vs visited alone; listed vs visited plus the success of the lookup, config load and listing | Complete = lookup, config load and listing succeeded and every listed repo was visited; `complete=` in `FULL_SYNC_DONE`; exit 0 only when complete | A Job that is always `Failed` is no signal; a run that listed nothing (`0/0`) or died early must not look complete | `auto (code; blind review)` | G5-AC3, G5-AC4 | Per-repo errors are read from `errors=`, not from the Job status |
+| CD-D-10 | Where check runs go | `createCheckRun` (lib/settings.js:135) puts the check on the admin repo's newest commit when any non-NOP run ends | Keep; a nightly check with its own name on the newest commit; none for scheduled runs and push runs on their pushed commit, others as today | No check run for scheduled runs; push runs check their pushed commit; every other run as today | A merge already showed another run's green check (2026-10-14); a paced 4-hour run makes that likely; a nightly check would put a red mark (prod runs always log some errors) on the day's last merge | `auto (prod logs 2026-10-14; code)` | G5-AC5–AC7 | The admin repo shows nothing about nightly runs; the Job status and the end lines do |
+| CD-D-11 | A scheduled NOP run must end cleanly and count its changes | `handleResults` in NOP mode reads `payload.check_run` (lib/settings.js:297–318), which a scheduled run lacks; results are deduplicated per (type, repo, plugin) | Leave it; skip the summary; log the intended calls | Skip the check-run update; log one `NOP_CHANGE` line per result row that names an endpoint, before the dedupe | The prod NOP night (enablement step 2) must count the first night's calls | `auto (code)` | G1-AC8, G5-AC8 | A first night with a lot of drift logs many lines, which Loki handles |
+| CD-D-12 | Job settings | A stuck run must not spill into the working day, and a failed run must not restart in daytime | No deadline; retries; a deadline without retries | `activeDeadlineSeconds: 39600` (11 h), `backoffLimit: 0`, `Forbid`, `startingDeadlineSeconds: 3600`, `Etc/UTC` | 3.8 h expected; a start up to an hour late still ends by 06:00Z; the daytime reserve covers the p95 only | `auto (prod baseline §2; blind review)` | G5-AC1 | A killed run leaves the end of the listing to the next night |
 | CD-D-13 | CronJob resources | The tenant quota is 24 GiB and 8 CPU; the replicas' limits are 2 × 8 GiB; `maxSurge: 0` was set to stay off the cap | Copy the replicas' 8Gi (24 GiB, exactly the cap); 6Gi | Requests 500m / 1Gi, limits 2 CPU / 6Gi, heap 5 GiB | 2 × 8 + 6 = 22 GiB leaves room; one run per pod, where the replicas held up to four on 11-04 | `auto (prod values comments)` | G5-AC1 | Peak memory of a prod full sync is not measured yet; the NOP night measures it |
-| CD-D-14 | Keeping the repo cache right | The branches plugin reads `default_branch` (lib/plugins/branches.js:26) after the repository plugin may have changed it | Cache GET responses only; re-read after any write; replace the entry with the write's response | Replace the cached repo with the PATCH or rename response | One read per repo without stale data inside a run | `auto (code)` | G2-AC3 | Changes by others during a run are seen as late as today |
-| CD-D-15 | What can be tuned | Dev must be able to force a pause; prod may need a different floor | Constants; env and values | `SS_QUOTA_FLOOR` (default 5000) and `fullSync.*` values | G6-AC2 needs a floor above dev's remaining quota | `auto` | G4-AC1, G6-AC2 | none |
-| CD-D-16 | In-process `CRON` | The guard sits in the shared loop | Pace it; leave it unpaced; remove the option | Paced, kept; no overlap guard; prod keeps `CRON: ""` | Dev's hourly ticks (~700 calls after the cuts) never reach the floor; prod does not use it | `auto` | G4-AC7 | A tick that waits past the hour overlaps the next one; documented, not guarded |
-| CD-D-17 | Order of the prod rollout | Turning it on in prod is a later step | Apply from the first night; NOP first | Dev, then a prod NOP night, then apply | The NOP night measures cost, time and memory and lists the first night's drift with zero writes | `auto (brief: prod is a later step)` | none | One extra night before drift repair starts |
+| CD-D-14 | Keeping the repo cache right | The branches plugin reads `default_branch` (lib/plugins/branches.js:26) after the repository plugin may have changed it; a rename returns a branch, not a repo | Cache GET responses only; re-read after any write; update the entry from the write's response | Replace the cached repo with a PATCH response; after a rename, set the cached `default_branch` to the new name | One read per repo without stale data inside a run | `auto (code; blind review)` | G2-AC3 | Changes by others during a run are seen as late as today |
+| CD-D-15 | What can be tuned, and where | Dev must be able to force a pause without pacing its replicas | Constants; the shared env map; CronJob-only values | `SS_QUOTA_FLOOR` (default 5000); on the CronJob, `fullSync.quotaFloor` and `fullSync.nop` set its container env only | A floor of 14,500 in dev's shared map would pace dev's hourly ticks too, and they would pile up (CD-D-16) | `auto (blind review)` | G4-AC1, G5-AC1, G6-AC2 | The replicas' merge-triggered syncs use the default unless the shared map sets the variable |
+| CD-D-16 | In-process `CRON` | The guard sits in the shared loop | Pace it; leave it unpaced; remove the option | Paced, kept; no overlap guard; prod keeps `CRON: ""` | Dev's hourly ticks (~700 calls after the cuts) never reach the floor; prod does not use it | `auto` | G4-AC8 | A tick that waits past the hour overlaps the next one; documented, not guarded |
+| CD-D-17 | Order of the prod rollout | Turning it on in prod is a later step | Apply from the first night; NOP first | Dev, then a prod NOP night, then apply | The NOP night measures cost, time and memory and lists the first night's calls with zero writes | `auto (prod changes are a later step)` | none | One extra night before drift repair starts |
+| CD-D-18 | What cut (d) skips on archived repos | All 1,267 collaborator failures on archived repos were PUTs; no removal was attempted in 10 days, so whether GitHub accepts one there is unknown; with `COLLABORATORS_MEMBERS_ONLY` the plugin also removes non-members' access | Stop the collaborators plugin on archived repos (the approved wording); skip only its PUTs | Skip only PUTs (additions and permission changes); keep reads and removals | Stopping the plugin could leave access in place that a removal would have taken away; keeping the reads costs 1,084 calls per run (3%) | `auto (prod logs; blind review)` | G3-AC1–AC3 | A removal GitHub refuses on an archived repo logs an error, as today |
+| CD-D-19 | The CronJob's environment | `full-sync.js` loads `index.js`, which schedules `CRON` when set; the Deployment mounts a deployment-config file that the shared env map does not carry | Inherit everything from the Deployment; override per CronJob | Same image, secret, env map and deployment-config file as the Deployment, plus container env `CRON: ""` and the `fullSync.*` settings; `full-sync.js` always exits | Without the config file the run would apply repo-file overrides that webhook runs reject; with dev's `CRON` the Job would never end | `auto (chart; code; blind review)` | G5-AC1–AC3 | none |
 
 ## Key facts & assumptions
 
 - **The rule to keep:** a paced run never starts a repo while its quota reading is below the floor; webhook-driven syncs are never paced.
 - The budget is GitHub's documented 15,000 calls/h per installation, shared by the replicas and the CronJob. If GitHub in fact counts per token, as the two windows seen on 11-04 might suggest, the guard reads its own token's window and stays on the safe side.
 - Night webhook load stays near the steady state of 11-05 → 11-23 (p95 244/h, worst hour 2,461).
-- *Unconfirmed, not blocking:* that GitHub refuses collaborator removals on archived repos as it refuses additions (1,267 additions, all `403 Repository was archived so is read-only`; no removal was attempted in 10 days).
+- A `settings.yml` PR's dry run stays an unpaced full read pass (~36,700 calls after the cuts, ~48,500 today), on every push to the PR.
+- *Unconfirmed, not blocking:* whether GitHub accepts collaborator removals on archived repos (no removal was attempted in 10 days; additions all failed). The design keeps trying them, as today.
 - *Unconfirmed, not blocking:* the peak memory of a prod full sync in one process; the NOP night measures it before the first real night.
 - The first real night also writes the drift accumulated since the last complete full sync. It is a one-off, sized by the NOP night.
 - This repository is public. The design carries aggregate numbers only; the Loki helper scripts and repo lists behind them stay in private tooling.

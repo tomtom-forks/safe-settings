@@ -23,7 +23,7 @@ def terms(c, r, warm=False, scheduled=False, after=False):
     A = c['active']
     p, ap = c['plugins'], c.get('archivedPlugins', {})
     T = p.get('teams', 0) + ap.get('teams', 0)               # teams syncs (active + archived)
-    Ca = 0 if after else ap.get('collaborators', 0)          # cut (d): no collaborators on archived
+    Ca = ap.get('collaborators', 0)                         # archived repos still read collaborators
     B = c['branchEntries']
     out = [
         ('repo listing, 100/page', 'read', math.ceil(c['repos'] / 100)),
@@ -47,7 +47,7 @@ def terms(c, r, warm=False, scheduled=False, after=False):
         ('GET labels', 'read', p.get('labels', 0)),
         ('GET collaborators + invitations', 'read', 2 * (p.get('collaborators', 0) + Ca)),
         ('GET membership, per distinct user', 'read', c['collabUsers'] if p.get('collaborators') else 0),
-        ('PUT collaborator on archived repo (403)', 'write', 0 if after else r['archived_collab_put']),  # cut (d)
+        ('PUT collaborator on archived repo (403)', 'write', 0 if after else r['archived_collab_put']),  # cut (d): no PUT there
         ('rulesets: list + one per ruleset', 'read', p.get('rulesets', 0) + r.get('repo_rulesets', c['rulesetEntries'])),
         ('ruleset writes', 'write', round(r['ruleset_writes'] * p.get('rulesets', 0))),
         ('environments: list + 3 per env', 'read', p.get('environments', 0) + 3 * c['envEntries']),
