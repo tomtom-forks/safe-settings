@@ -37,6 +37,7 @@ const config = Object.assign({ restrictedRepos: { exclude: ['.github', 'safe-set
   await s.loadConfigs()
   const repos = fs.readFileSync(reposTsv, 'utf8').trim().split('\n').map(l => l.split('\t')).map(([name, archived]) => ({ name, archived: archived === 'true' }))
   const ghosts = (process.env.GHOST_TEAMS || '').split(',').filter(Boolean)
+  const archivedUsers = new Set() // users configured on archived repos; the members-only check reads each distinct user once per run
   const res = { teamListed: {}, teamsSynced: 0, org, repos: repos.length, restricted: 0, active: 0, archived: 0, archivedSynced: 0, activeWithSuborg: 0, activeWithRepoFile: 0, plugins: {}, archivedPlugins: {}, branchEntries: 0, rulesetEntries: 0, envEntries: 0, collabEntries: 0, archivedCollabEntries: 0, collabUsers: new Set(), validationErrors: 0 }
   for (const r of repos) {
     if (s.isRestricted(r.name)) { res.restricted++; continue }
@@ -55,7 +56,7 @@ const config = Object.assign({ restrictedRepos: { exclude: ['.github', 'safe-set
           const n = P === Settings.PLUGINS.teams ? 'teams' : 'collaborators'
           res.archivedPlugins[n] = (res.archivedPlugins[n] || 0) + 1
           if (n === 'teams') { res.teamsSynced++; for (const g of ghosts) if ((cfg || []).some(t => String(t.name).toLowerCase() === g)) res.teamListed[g] = (res.teamListed[g] || 0) + 1 }
-          if (n === 'collaborators') res.archivedCollabEntries += Array.isArray(cfg) ? cfg.length : 0
+          if (n === 'collaborators') { (cfg || []).forEach(c => archivedUsers.add(String(c.username).toLowerCase())); res.archivedCollabEntries += Array.isArray(cfg) ? cfg.length : 0 }
         }
       }
       continue
@@ -73,6 +74,7 @@ const config = Object.assign({ restrictedRepos: { exclude: ['.github', 'safe-set
       if (n === 'collaborators') { (cfg || []).forEach(c => res.collabUsers.add(String(c.username).toLowerCase())); res.collabEntries += Array.isArray(cfg) ? cfg.length : 0 }
     }
   }
+  res.collabUsersAll = new Set([...res.collabUsers, ...archivedUsers]).size // active + archived, distinct
   res.collabUsers = res.collabUsers.size
   res.suborgFiles = fs.readdirSync(path.join(gh, 'suborgs')).length
   res.repoFiles = fs.readdirSync(path.join(gh, 'repos')).length

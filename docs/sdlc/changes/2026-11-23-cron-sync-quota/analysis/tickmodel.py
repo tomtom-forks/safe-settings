@@ -46,7 +46,7 @@ def terms(c, r, warm=False, scheduled=False, after=False):
         ('GET topics (validator)', 'read', p.get('validator', 0)),
         ('GET labels', 'read', p.get('labels', 0)),
         ('GET collaborators + invitations', 'read', 2 * (p.get('collaborators', 0) + Ca)),
-        ('GET membership, per distinct user', 'read', c['collabUsers'] if p.get('collaborators') else 0),
+        ('GET membership, per distinct user (active + archived)', 'read', c.get('collabUsersAll', c['collabUsers']) if (p.get('collaborators') or Ca) else 0),
         ('PUT collaborator on archived repo (403)', 'write', 0 if after else r['archived_collab_put']),  # cut (d): no PUT there
         ('rulesets: list + one per ruleset', 'read', p.get('rulesets', 0) + r.get('repo_rulesets', c['rulesetEntries'])),
         ('ruleset writes', 'write', round(r['ruleset_writes'] * p.get('rulesets', 0))),
