@@ -20,7 +20,7 @@
 
 Prod runs webhook-only because a full sync was estimated at 100–200k API calls against the App's 15,000/hour budget. Extrapolated from a measured dev run and prod logs, one full sync of prod on rc.9 costs ~83,100 calls, and ~34,000 of them are writes that change nothing: branch protection rewritten on every run, Dependabot alerts re-enabled, DELETEs of teams whose access comes from an organization role, and collaborator additions that archived repos refuse. Two replicas each running it would double that.
 
-This design runs one full sync per night from a Kubernetes CronJob and paces it: at its start and before each repo it checks the quota, and below 5,000 calls left in the hour it waits for the reset, so webhooks keep a third of the budget (their night peak is 2,461 calls/h). Five cuts remove the waste: one read per repo, flattened protection flags, read-before-write for Dependabot alerts, grant checks before team DELETEs, and no collaborator writes on archived repos. A run then costs ~37,300 calls and ~600 writes and needs ~3.8 of the 11 hours it may take; without the cuts it would barely fit, so they ship first. The same pacing covers the full syncs that `settings.yml` merges start. Two risks stay: the PR dry run of a `settings.yml` PR is still an unpaced ~36,700-call read pass, and several merges in a row start several paced runs that finish late. Exit codes, end-of-run lines and check runs report truthfully whether a run covered every repo. Prod is not changed in this phase; turning it on is a later, NOP-first rollout.
+This design runs one full sync per night from a Kubernetes CronJob and paces it: at its start and before each repo it checks the quota, and below 5,000 calls left in the hour it waits for the reset, so webhooks keep a third of the budget (their night peak is 2,461 calls/h). Five cuts remove the waste: one read per repo, flattened protection flags, read-before-write for Dependabot alerts, grant checks before team DELETEs, and no collaborator writes on archived repos. A run then costs ~37,300 calls and ~600 writes and needs ~3.8 of the 11 hours it may take; without the cuts it would barely fit, so they ship first. The same pacing covers the full syncs that `settings.yml` merges start. Two risks stay: the PR dry run of a `settings.yml` PR is still an unpaced ~36,700-call read pass, and several merges in a row start several paced runs that finish late. Exit codes, end-of-run lines and check runs report truthfully whether a run covered every repo. The CronJob is named `safe-settings-full-sync`, and the comment next to `CRON: ""`, the deployment's operations guide and the fork's TOMTOM.md say that it, not `CRON`, runs the full sync, and how to check, start and pause it. Prod is not changed in this phase; turning it on is a later, NOP-first rollout.
 
 ## Background & problem 🔍
 
@@ -156,7 +156,7 @@ flowchart LR
 ```mermaid
 flowchart LR
   subgraph after["After the change"]
-    cj["CronJob 18:00Z: node full-sync.js"] -->|"paced full sync"| guard{"quota ≥ 5,000?"}
+    cj["CronJob safe-settings-full-sync, 18:00Z: node full-sync.js"] -->|"paced full sync"| guard{"quota ≥ 5,000?"}
     pods2["2 replicas, CRON off"] -->|"settings.yml merge: paced full sync"| guard
     guard -->|"yes: next repo"| q2[("15,000 calls/h")]
     guard -->|"no: wait for the reset"| guard
@@ -215,13 +215,19 @@ flowchart LR
 - [ ] G6-AC2 — A dev CronJob run with `fullSync.quotaFloor` above dev's remaining quota (e.g. 14,500) logs at least one `QUOTA_PAUSE`, then `QUOTA_RESUME` after the reset, and ends with `FULL_SYNC_DONE nop=false complete=true repos=209/209`; the Job completes. · `verify: dev Job status and pod logs`
 - [ ] G6-AC3 — The dev tick measured for G6-AC1 matches the model's dev prediction (`analysis/tickmodel.py analysis/inputs/coverage-dev.json analysis/inputs/rates-dev.json --warm-config --scheduled`: 708 charged, 17 writes) within 5% overall and on each model row, compared per endpoint. Where a row differs, its per-repo count in `tickmodel.py` is corrected to the measurement, and the corrected model with the prod inputs (`--scheduled`) must stay at or below 40,000 charged calls for one nightly prod run (at most 4.1 hours under the floor at the night p95). · `verify: per-endpoint counts of the G6-AC1 tick against the model's rows; the corrected model's prod output`
 
+**G7: Someone who has not read this design can find, check, start and pause the nightly sync**
+- [ ] G7-AC1 — The CronJob is named `safe-settings-full-sync`. With `fullSync.suspend: true` it renders with `spec.suspend: true`; without the key, `spec.suspend` is `false`. · `verify: helm template with fullSync.enabled: true, with and without fullSync.suspend`
+- [ ] G7-AC2 — In the dev values file, the comment above `CRON` says that an in-process schedule runs in every replica and that the full sync runs once as the `safe-settings-full-sync` CronJob, set by the `fullSync` block. That block follows the env config map, and its comments say what each key does, that `suspend: true` pauses the CronJob, and that `enabled: false` removes it only on a Sync with PRUNE ticked. The prod values file gets the same comment and block in the enablement change (Testing & verification, step 2). · `verify: review of the values diff against this list`
+- [ ] G7-AC3 — The deployment repo's operations guide lists the CronJob next to `CRON` in its overview table, and has a "Nightly full sync" section with copy-paste commands for: the last run's outcome (CronJob and Job status, and the Loki query for `FULL_SYNC_DONE`), starting a run by hand, switching NOP mode and pausing it. The section says what an incomplete run looks like and that nothing reruns it before the next night. The guide's cost of a full-org sync (≈ 100–200k calls, ~10 h) is replaced with the measured cost and the pacing. The repo's README names the section in its pointer to the guide. · `verify: the G6-AC2 dev run is started with the guide's manual-run command, and its outcome is read with the guide's commands`
+- [ ] G7-AC4 — The fork's TOMTOM.md lists the change in its patch set, `SS_QUOTA_FLOOR` among the configuration knobs, and the `QUOTA_*`, `FULL_SYNC_DONE` and `NOP_CHANGE` markers and the `repos=` field of `RECONCILE_DONE` among the log markers. It also says that `CRON` schedules a sync in every replica, so a deployment with several replicas runs `full-sync.js` once from a scheduler instead; the header comment of `full-sync.js` says the same. · `verify: review of the diff against this list`
+
 ### Non-goals
 
 - Enabling the CronJob in prod or changing anything there (values, App settings). That is a later step (see Testing & verification).
 - Pacing PR dry runs. A `settings.yml` PR's dry run stays an unpaced read pass of ~36,700 calls (CD-D-5); suborg and repo-file syncs and per-repo webhook syncs stay unpaced too.
 - Superseding or merging overlapping merge-triggered full syncs. Several merges in a row start several paced runs (see Error handling).
 - A cache of ETags kept across runs. The CronJob starts cold every night; its 1,894 config reads stay.
-- Leader election, or running `CRON` in the replicas; prod keeps `CRON: ""`. No overlap guard for in-process ticks.
+- Leader election, or running `CRON` in the replicas; prod keeps `CRON: ""` (CD-D-2, CD-D-21). No overlap guard for in-process ticks.
 - A second GitHub App for the scheduled run.
 - Reading Dependabot alert state for many repos at once through GraphQL (would save ~6,500 REST calls per run).
 - Spreading one run over several nights, or resuming a run that was killed.
@@ -229,9 +235,9 @@ flowchart LR
 
 ## Architecture
 
-The change has four parts: where the run happens, how it is paced, what it stops wasting, and how it reports.
+The change has five parts: where the run happens, how it is paced, what it stops wasting, how it reports, and how people find it.
 
-**1. One run per night, out of band.** A Kubernetes CronJob in the safe-settings namespace starts `node full-sync.js` at 18:00Z. It uses the Deployment's image, credentials secret, env config map and deployment-config file, so it applies the same restricted repos and override validators as the webhook runs. Its container env sets `CRON: ""`, because a set `CRON` would schedule in-process ticks inside the Job (dev's shared map has one), and it sets the floor and NOP mode from `fullSync.*` values, so they never reach the replicas. The Dockerfile copies `full-sync.js` into the image. The template renders nothing when `fullSync` is absent or not enabled, so prod's current values file still renders. `full-sync.js` calls `syncInstallation(nop, { paced: true })` and always ends the process itself. The replicas keep `CRON: ""` and serve webhooks as before. `concurrencyPolicy: Forbid` keeps one run at a time, and the 11-hour deadline ends a run by 06:00Z even when the Job starts an hour late.
+**1. One run per night, out of band.** A Kubernetes CronJob, `safe-settings-full-sync`, in the safe-settings namespace starts `node full-sync.js` at 18:00Z. It uses the Deployment's image, credentials secret, env config map and deployment-config file, so it applies the same restricted repos and override validators as the webhook runs. Its container env sets `CRON: ""`, because a set `CRON` would schedule in-process ticks inside the Job (dev's shared map has one), and it sets the floor and NOP mode from `fullSync.*` values, so they never reach the replicas. The Dockerfile copies `full-sync.js` into the image. The template renders nothing when `fullSync` is absent or not enabled, so prod's current values file still renders. `fullSync.suspend` pauses the CronJob without removing it (CD-D-22). `full-sync.js` calls `syncInstallation(nop, { paced: true })` and always ends the process itself. The replicas keep `CRON: ""` and serve webhooks as before. `concurrencyPolicy: Forbid` keeps one run at a time, and the 11-hour deadline ends a run by 06:00Z even when the Job starts an hour late.
 
 **2. A quota guard in the repo loop.** A paced run asks its guard once at the start, before it loads its config, and then `eachRepositoryRepos` (lib/settings.js:602) asks it before each repo. The guard is created per paced run and attaches hooks to that run's Octokit client:
 
@@ -274,6 +280,12 @@ flowchart TD
   fs --> fsd["FULL_SYNC_DONE complete=…, exit code"]
 ```
 
+**5. Making it findable.** People look first at `CRON`, which stays empty in prod, so the explanation goes where they look:
+
+- *Values.* The comment above `CRON` says why it is empty and points to the `fullSync` block, which follows the env config map and documents its keys, including the pause switch.
+- *Operations guide* (deployment repo, `docs/OPERATIONS.md`). The overview table lists the CronJob next to `CRON`. A "Nightly full sync" section covers status, logs, a manual run, NOP mode and pausing, and the guide's full-org sync cost is updated. The README names the section.
+- *Fork.* TOMTOM.md documents the new knob and markers and why a deployment with several replicas runs `full-sync.js` from a scheduler rather than `CRON`; `full-sync.js` says so in its header.
+
 ## Components
 
 In tomtom-forks/safe-settings:
@@ -288,16 +300,19 @@ In tomtom-forks/safe-settings:
 - **`lib/plugins/diffable.js`** — in NOP mode, wait for pending changes before returning results.
 - **`lib/plugins/archive.js`, `lib/plugins/labels.js`** — read the repo from the cache.
 - **`index.js`** — `paced` option on `syncAllSettings`, set by the scheduled, push and org-ruleset full syncs; the pushed commit passed on for the check run; the scheduled marker that suppresses the check run.
-- **`full-sync.js`** — completion from the run's flags and counts; `FULL_SYNC_DONE`; explicit exit in every case.
+- **`full-sync.js`** — completion from the run's flags and counts; `FULL_SYNC_DONE`; explicit exit in every case; a header comment on why it runs from a scheduler, not `CRON`.
 - **`Dockerfile`** — copy `full-sync.js` into the image.
 - **`lib/env.js`** — `SS_QUOTA_FLOOR` (default 5000).
+- **`TOMTOM.md`** — the patch-set row, `SS_QUOTA_FLOOR` among the knobs, the new log markers and `repos=`, and the note on `CRON` with several replicas (G7-AC4).
 - **`test/unit/…`** — nock tests for G1–G5. CI runs only `test:unit:ci`, and the integration harness in `test/integration/common.js` fails at startup on Probot 13 (`appId option is required`), so new tests go under `test/unit`. They intercept HTTP with `nock` (already a dev dependency, not yet used by unit tests) or with the fetch stub of `test/unit/lib/settings-archived-transport.test.js`. Entry-point tests load `index.js` with a fake robot (it records `robot.on` handlers) and a stub `Settings`, which `index.js` accepts as its third argument, and assert the `paced` option each handler passes.
 - **`docs/sdlc/changes/2026-11-23-cron-sync-quota/analysis/`** — the cost model, `coverage.js` and the aggregate inputs used above.
 
 In tomtom-internal/safe-settings-deployment:
 
-- **`apps/safe-settings-dev/templates/cronjob.yaml`** (new) and dev values — the CronJob of G5-AC1, enabled on dev for G6.
+- **`apps/safe-settings-dev/templates/cronjob.yaml`** (new) — the CronJob `safe-settings-full-sync` of G5-AC1 and G7-AC1, including `fullSync.suspend`.
+- **`apps/safe-settings-dev/values.yaml`** — the `fullSync` block, enabled on dev for G6, and the rewritten comment above `CRON` (G7-AC2).
 - **`apps/safe-settings-prod/templates/cronjob.yaml`** (new) — the same template, rendering nothing until values enable it, also when the values have no `fullSync` key. The prod values file is not changed in this phase.
+- **`docs/OPERATIONS.md`, `README.md`** — the overview row, the "Nightly full sync" section, the updated full-org sync cost and the README pointer (G7-AC3).
 
 ## Data flow
 
@@ -330,17 +345,18 @@ sequenceDiagram
 | A repo fails | Logged per repo as today; counts as visited; the run goes on | `errors=` in both end lines; exit code stays 0 |
 | Several `settings.yml` merges in a row | Each starts a paced full sync; four in an hour need ~141,600 calls, 15–22 h of budget above the floor. Webhooks keep their reserve; the runs finish late, and a CronJob run that starts meanwhile may hit its deadline | `QUOTA_PAUSE` lines of several runs; Job `Failed` |
 | A team's grants or the security managers change during a run | The per-run caches can be hours old by the end of a run. A repo-level grant added meanwhile to a team outside the config is removed one run later | The next run, or a webhook sync of the repo, which checks per repo |
+| Someone turns the CronJob off with `fullSync.enabled: false` | A Sync without PRUNE leaves the CronJob in the cluster, and it keeps running every night | Argo shows the CronJob as needing a prune; the values comment and the guide point to `fullSync.suspend` instead (CD-D-22) |
 
 ## Testing & verification
 
 The per-goal `verify:` hints are the test plan; all new tests go under `test/unit` (see Components). Two checks cut across goals.
 
-**Dev, before vs after (G6).** Dev keeps its hourly in-process cron. Before: one pod's tick on 2026-11-23 12:00Z made 1,402 request lines (1,381 charged on the installation, 426 writes). After the dev rollout, count one tick on one pod the same way and compare it, per endpoint, with the model's dev prediction (G6-AC3). Then run the dev CronJob once with a high `fullSync.quotaFloor` (G6-AC2).
+**Dev, before vs after (G6).** Dev keeps its hourly in-process cron. Before: one pod's tick on 2026-11-23 12:00Z made 1,402 request lines (1,381 charged on the installation, 426 writes). After the dev rollout, count one tick on one pod the same way and compare it, per endpoint, with the model's dev prediction (G6-AC3). Then start one dev CronJob run with the operations guide's manual-run command and a high `fullSync.quotaFloor` (G6-AC2), and read its outcome with the guide's commands (G7-AC3).
 
 **Prod enablement (a later step, not part of this change).** Each step is a separate change in safe-settings-deployment:
 
 1. Ship the fork release to prod with the CronJob template disabled. The replicas get cuts (a)–(e), the pacing of merge-triggered syncs and the check-run placement.
-2. Enable the CronJob for one night with `fullSync.nop: true`. A NOP run makes all the reads and no writes, so it measures the real nightly cost, duration and peak memory. Its `NOP_CHANGE` lines count the API calls the first real night will make.
+2. Enable the CronJob for one night with `fullSync.nop: true`. The same change adds the `fullSync` block and the rewritten `CRON` comment to the prod values (G7-AC2). A NOP run makes all the reads and no writes, so it measures the real nightly cost, duration and peak memory. Its `NOP_CHANGE` lines count the API calls the first real night will make.
 3. Review the NOP night: charged calls (expected ≤ 40,000), `QUOTA_PAUSE` count, `FULL_SYNC_DONE complete=true repos=15787/15787`, and the size and kind of the intended changes.
 4. Switch to apply. Watch the first night's writes against the NOP list, and the webhook p95 the next day.
 
@@ -349,7 +365,7 @@ The per-goal `verify:` hints are the test plan; all new tests go under `test/uni
 | ID | Title | Context | Options | Choice | Rationale | Source | Goal impact | Consequences |
 |----|-------|---------|---------|--------|-----------|--------|-------------|--------------|
 | CD-D-1 | How often, and when | A full sync repairs drift; its cost competes with webhooks | Hourly (as on dev); every 6 h (legacy); nightly; weekly | Nightly, starting 18:00Z | One paced run needs ~3.8 h at night; nights 18–06Z have a webhook p95 of 244 calls/h, weekdays 3,529 | `user` (once a night); start time `auto (prod baseline §2)` | G5-AC1 | Drift is repaired within a day; webhooks stay the fast path |
-| CD-D-2 | Where the run executes | Prod has 2 replicas and no leader election, so in-process `CRON` runs once per replica | In-process `CRON` on both replicas; leader election; a CronJob under the existing App; a CronJob under a second App with its own 15,000/h | One CronJob running `full-sync.js` under the existing App | One run per night, its own memory, a Job status as the signal; with the cuts the existing budget suffices | `user` | G5-AC1 | A cron-only App later needs the CronJob to take `APP_ID` and `PRIVATE_KEY` from its own values and secret (`APP_ID` sits in the shared env map today): a chart change, no code change |
+| CD-D-2 | Where the run executes | Prod has 2 replicas and no leader election, so in-process `CRON` runs once per replica | In-process `CRON` on both replicas; leader election; a CronJob under the existing App; a CronJob under a second App with its own 15,000/h | One CronJob running `full-sync.js` under the existing App | One run per night, not one per replica; a run that stalls or runs out of memory cannot take a webhook pod down with it (prod's liveness probe already allows for event-loop stalls of several minutes during a full-org sync); a Job status as the signal; the prod values comment and upstream's `full-sync.js` already prescribe an out-of-band run; with the cuts the existing budget suffices | `user` (kept after the question whether in-process `CRON` is easier to maintain, CD-D-21) | G5-AC1 | A cron-only App later needs the CronJob to take `APP_ID` and `PRIVATE_KEY` from its own values and secret (`APP_ID` sits in the shared env map today): a chart change, no code change |
 | CD-D-3 | How the run is paced | The throttling plugin waits only at 0 remaining, which starved webhooks on 11-04 | A fixed slice of repos per tick; spreading over N hours; rely on the throttling plugin; a dynamic floor | At the start and before each repo, wait for the reset while the reading is below 5,000 | Adapts to the real webhook load; 5,000 is twice the worst night hour and 1.4× the weekday p95 | `user` | G4-AC1–AC7, G4-AC9 | Run time depends on the webhook load; what crosses the floor is the work in flight (up to 4 repos per run) and the start phase (~2,060 calls when cold) |
 | CD-D-4 | Which calls to cut | Today's run is ~83,100 calls and 34,578 writes (≥ 9.6 h at 1 write/s) | None; write fixes only (a, b, d); all five (a–e); also an ETag cache kept across runs | All five | ~37,300 calls and 582 writes; an ETag cache would need storage that outlives the CronJob's process | `user` | G1, G2, G3 | Webhook syncs get the same cuts; for (d) see CD-D-18 |
 | CD-D-5 | Which runs the floor paces | The 11-04 exhaustion came from four merge-triggered full syncs and the dry runs of the same PRs | Scheduled runs only; also full syncs triggered by `settings.yml` merges; also the PR dry runs | Scheduled runs and push-triggered full syncs (and the org-level ruleset event, which also starts one) | Removes the merge-triggered part of the 11-04 burst; pacing dry runs would make PR checks take hours | `user` | G4-AC8 | One `settings.yml` merge rolls out over ~3.6–5.5 h instead of exhausting the quota; several in a row start several paced runs that finish late (four: 15–22 h of budget above the floor). A `settings.yml` PR's dry run stays an unpaced ~36,700-read pass (~2.4 hourly budgets) on every push to the PR. Both are known residual risks |
@@ -368,6 +384,8 @@ The per-goal `verify:` hints are the test plan; all new tests go under `test/uni
 | CD-D-18 | What cut (d) skips on archived repos | All 1,267 collaborator failures on archived repos were PUTs; no removal was attempted in 10 days, so whether GitHub accepts one there is unknown; with `COLLABORATORS_MEMBERS_ONLY` the plugin also removes non-members' access; invitation updates are PATCHes, which archived repos refuse too | Stop the collaborators plugin on archived repos (the approved wording); skip only its writes other than removals | Skip additions, permission changes and invitation updates (PUT and PATCH), in apply and NOP mode; keep reads and removals | Stopping the plugin could leave access in place that a removal would have taken away; keeping the reads costs 1,084 calls per run (3%) | `auto (prod logs; blind review)` | G3-AC1–AC3 | A removal GitHub refuses on an archived repo logs an error, as today |
 | CD-D-19 | The CronJob's environment | `full-sync.js` loads `index.js`, which schedules `CRON` when set; the Deployment mounts a deployment-config file that the shared env map does not carry | Inherit everything from the Deployment; override per CronJob | Same image, secret, env map and deployment-config file as the Deployment, plus container env `CRON: ""` and the `fullSync.*` settings; `full-sync.js` always exits | Without the config file the run would apply repo-file overrides that webhook runs reject; with dev's `CRON` the Job would never end | `auto (chart; code; blind review)` | G5-AC1–AC3 | none |
 | CD-D-20 | Cuts before the CronJob | A paced run of today's code fits the 11 hours only barely: its 34,578 writes take 9.6 h at 1 write/s | Enable the CronJob first and cut later; cut first | Ship the cuts first; enable the CronJob only on a release that has them | ~3.8 h instead of ≥ 9.6 h; the paced merge-triggered runs shrink too (daytime p95: ~12.6 h → ~5.5 h) | `auto (§5)` | G5-AC1, G6-AC3 | Prod enablement step 1 is the release with the cuts |
+| CD-D-21 | Making the CronJob findable | A separate CronJob is one more object, and people who do not know this design look first at `CRON`; prod's comment above `CRON: ""` mentions a CronJob only as an option | Switch to in-process `CRON`, which needs leader election or a single-replica Deployment to run once; keep the CronJob, documented only in the chart; keep it, named and explained where people look first | Keep the CronJob as `safe-settings-full-sync`, explained next to `CRON` in the values, in the deployment's operations guide and in the fork's TOMTOM.md | In-process `CRON` runs once per replica; making it run once adds code or an object that is harder to explain than a documented CronJob | `user` (2026-11-23) | G7 | The values comments and the guide must change with the chart; the G6-AC2 dev run tries the guide's commands |
+| CD-D-22 | How to pause the CronJob | Argo CD auto-sync is off and the operations guide says to leave PRUNE unticked, so a CronJob dropped from the rendered chart (`fullSync.enabled: false`) keeps running until a pruning Sync | `enabled: false` with a pruning Sync; `fullSync.suspend`, rendered as `spec.suspend` | `fullSync.suspend` (default `false`) pauses it; `enabled: false` with PRUNE ticked removes it | A pause that takes effect on an ordinary Sync and keeps the Job history | `auto (deployment operations guide §1)` | G7-AC1, G7-AC2 | none |
 
 ## Key facts & assumptions
 
@@ -377,5 +395,6 @@ The per-goal `verify:` hints are the test plan; all new tests go under `test/uni
 - A `settings.yml` PR's dry run stays an unpaced full read pass (~36,700 calls after the cuts, ~48,500 today), on every push to the PR.
 - *Unconfirmed, not blocking:* whether GitHub accepts collaborator removals on archived repos (no removal was attempted in 10 days; additions all failed). The design keeps trying them, as today.
 - *Unconfirmed, not blocking:* the peak memory of a prod full sync in one process; the NOP night measures it before the first real night.
+- *Unconfirmed, not blocking:* whether the tenant's Kubernetes role may create Jobs (`kubectl create job --from=cronjob/safe-settings-full-sync`). If it may not, the guide's manual run becomes a temporary schedule change in the values; the G6-AC2 dev run finds out.
 - The first real night also writes the drift accumulated since the last complete full sync. It is a one-off, sized by the NOP night.
 - This repository is public. The design carries aggregate numbers only; the Loki helper scripts and repo lists behind them stay in private tooling.
