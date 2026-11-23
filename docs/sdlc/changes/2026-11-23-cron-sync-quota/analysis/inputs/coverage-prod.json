@@ -1,0 +1,40 @@
+{
+ "teamListed": {
+  "org-role team 1": 77,
+  "org-role team 2": 54,
+  "org-role team 3": 33,
+  "org-role team 4": 55
+ },
+ "teamsSynced": 4445,
+ "org": "tomtom-internal",
+ "repos": 15787,
+ "restricted": 1,
+ "active": 6564,
+ "archived": 9222,
+ "archivedSynced": 1615,
+ "activeWithSuborg": 2879,
+ "activeWithRepoFile": 1120,
+ "plugins": {
+  "branches": 6564,
+  "teams": 2835,
+  "labels": 864,
+  "autolinks": 1981,
+  "validator": 1077,
+  "rulesets": 708,
+  "collaborators": 658,
+  "environments": 19
+ },
+ "archivedPlugins": {
+  "teams": 1610,
+  "collaborators": 542
+ },
+ "branchEntries": 7160,
+ "rulesetEntries": 1120,
+ "envEntries": 120,
+ "collabEntries": 2417,
+ "archivedCollabEntries": 2710,
+ "collabUsers": 303,
+ "validationErrors": 0,
+ "suborgFiles": 181,
+ "repoFiles": 1709
+}
