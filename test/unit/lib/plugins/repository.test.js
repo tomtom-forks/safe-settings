@@ -185,6 +185,29 @@ describe('Repository', () => {
           ]))
         })
       })
+
+      it('reports disabling security settings in a dry run', () => {
+        const plugin = configure({
+          security: { enableVulnerabilityAlerts: false, enableAutomatedSecurityFixes: false }
+        }, true)
+
+        return plugin.sync().then(res => {
+          expect(github.repos.disableVulnerabilityAlerts).not.toHaveBeenCalled()
+          expect(github.repos.disableAutomatedSecurityFixes).not.toHaveBeenCalled()
+          expect(res).toEqual([
+            expect.objectContaining({
+              repo: 'test',
+              endpoint: '/repos/bkeepers/test/vulnerability-alerts',
+              action: expect.objectContaining({ msg: 'Disabling Dependabot alerts' })
+            }),
+            expect.objectContaining({
+              repo: 'test',
+              endpoint: '/repos/bkeepers/test/automated-security-fixes',
+              action: expect.objectContaining({ msg: 'Disabling Dependabot security updates' })
+            })
+          ])
+        })
+      })
     })
   })
 })
