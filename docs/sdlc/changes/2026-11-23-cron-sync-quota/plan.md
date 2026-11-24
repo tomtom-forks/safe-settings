@@ -382,8 +382,8 @@ Required even if empty: write "None." A `change` row needs an updated design art
 
 | ID | Type | Status | Design updated? | Note |
 |----|------|--------|-----------------|------|
-| Architecture (e) and Components: per-run caches on the `Settings` instance | change | pending | no | The repo, security-manager and team-grant caches live in a new `lib/runCache.js`, keyed on the run's Octokit client as collaborators.js:9 keys its membership cache; each `Settings` constructor begins a fresh one. The plugins read the caches, and `lib/settings.js` requires the plugins, so caches on the instance would need a require cycle or a new constructor argument on every plugin. Behaviour is unchanged. |
-| G5-AC1 | change | pending | no | [P-B-41](#p-b-41) also has the CronJob's pod mirror the Deployment's pod and container security contexts, `/tmp` volume, service account with its workload-identity label, labels and `extraEnv`, which G5-AC1 does not list. Without them the Job's pod would run as root with a writable root filesystem, which the tenant's admission policy may reject. |
+| Architecture (e) and Components: per-run caches on the `Settings` instance | change | approved | yes, Architecture (e) and Components edited 2026-11-24 | The repo, security-manager and team-grant caches live in a new `lib/runCache.js`, keyed on the run's Octokit client as collaborators.js:9 keys its membership cache; each `Settings` constructor begins a fresh one. The plugins read the caches, and `lib/settings.js` requires the plugins, so caches on the instance would need a require cycle or a new constructor argument on every plugin. Behaviour is unchanged. |
+| G5-AC1 | change | approved | yes, G5-AC1 edited 2026-11-24 | [P-B-41](#p-b-41) also has the CronJob's pod mirror the Deployment's pod and container security contexts, `/tmp` volume, service account with its workload-identity label, labels and `extraEnv`, which G5-AC1 does not list. Without them the Job's pod would run as root with a writable root filesystem, which the tenant's admission policy may reject. |
 
 ## Replan log
 
