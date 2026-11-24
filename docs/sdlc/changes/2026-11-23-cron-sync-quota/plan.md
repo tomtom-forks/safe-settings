@@ -357,17 +357,110 @@ Slice 1 is worth merging alone: every sync, webhook or scheduled, drops about ha
 **Delivers:** every sync stops rewriting protection and Dependabot alerts that already match, stops team DELETEs that remove nothing and collaborator writes on archived repos, and reads each repo and the security managers once; one dev tick drops from 1,381 requests and 426 writes to at most 750 and 30.
 
 1. Add `test/unit/helpers/github.js` with a passing seam test (nock answers ProbotOctokit, `hook.after` sees the rate-limit headers), push it to [tomtom-forks/safe-settings#29](https://github.com/tomtom-forks/safe-settings/pull/29) and see CI pass on Node 18 and 20, an early probe of the test seam (leaves the machine) · verify: `test -f test/unit/helpers/github.js && [ "$(gh pr view 29 -R tomtom-forks/safe-settings --json headRefOid --jq .headRefOid)" = "$(git rev-parse HEAD)" ] && gh pr checks 29 -R tomtom-forks/safe-settings`
+
+   ```text
+   $ test -f test/unit/helpers/github.js && [ "$(gh pr view 29 -R tomtom-forks/safe-settings --json headRefOid --jq .headRefOid)" = "$(git rev-parse HEAD)" ] && gh pr checks 29 -R tomtom-forks/safe-settings
+   # run at the slice's end, HEAD b426632 = PR #29 head; the task's own push, d8e6f55, passed in run 45384547584
+   test (18)	pass	18s	https://github.com/tomtom-forks/safe-settings/actions/runs/45387686769/job/138422818382
+   test (20)	pass	22s	https://github.com/tomtom-forks/safe-settings/actions/runs/45387686769/job/138422818840
+   exit=0
+   ```
+
 2. Add failing plugin tests, covering [P-B-1](#p-b-1)–[P-B-3](#p-b-3), [P-B-5](#p-b-5), [P-B-6](#p-b-6) · verify: `[ "$(npx jest test/unit/lib/plugins -t 'P-B-[12356]:' --verbose 2>&1 | grep -oE '✕ P-B-[12356]:' | sort -u | grep -c .)" -eq 5 ]`
+
+   ```text
+   $ [ "$(npx jest test/unit/lib/plugins -t 'P-B-[12356]:' --verbose 2>&1 | grep -oE '✕ P-B-[12356]:' | sort -u | grep -c .)" -eq 5 ]
+   # run on a git archive of 3e92731, the commit that added these failing tests
+   failing-ids=5
+   exit=0
+   ```
+
 3. Add `test/unit/lib/settings-cuts.test.js` with failing whole-run tests, covering [P-B-4](#p-b-4), [P-B-7](#p-b-7)–[P-B-14](#p-b-14) · verify: `[ "$(npx jest test/unit/lib/settings-cuts.test.js -t 'P-B-([4789]|1[0-4]):' --verbose 2>&1 | grep -oE '✕ P-B-([4789]|1[0-4]):' | sort -u | grep -c .)" -eq 9 ]`
+
+   ```text
+   $ [ "$(npx jest test/unit/lib/settings-cuts.test.js -t 'P-B-([4789]|1[0-4]):' --verbose 2>&1 | grep -oE '✕ P-B-([4789]|1[0-4]):' | sort -u | grep -c .)" -eq 9 ]
+   # run on a git archive of a0534f7, the commit that added these failing tests
+   failing-ids=9
+   exit=0
+   ```
+
 4. Flatten the four protection flags in `reformatAndReturnBranchProtection()`, covering [P-B-1](#p-b-1), [P-B-2](#p-b-2) · verify: `npx jest test/unit/lib/plugins/branches.test.js -t 'P-B-[12]:'`
+
+   ```text
+   $ npx jest test/unit/lib/plugins/branches.test.js -t 'P-B-[12]:'
+   Tests:       12 skipped, 3 passed, 15 total
+   exit=0
+   ```
+
 5. Read the alert state before writing it, covering [P-B-3](#p-b-3) · verify: `npx jest test/unit/lib/plugins/repository.test.js -t 'P-B-3:'`
+
+   ```text
+   $ npx jest test/unit/lib/plugins/repository.test.js -t 'P-B-3:'
+   Tests:       3 skipped, 6 passed, 9 total
+   exit=0
+   ```
+
 6. Add `lib/runCache.js` with the repo entry, read by the archive check and the repository, branches and labels plugins and updated after a PATCH or rename, covering [P-B-10](#p-b-10), [P-B-12](#p-b-12) · verify: `npx jest test/unit/lib/settings-cuts.test.js -t 'P-B-1[02]:'`
+
+   ```text
+   $ npx jest test/unit/lib/settings-cuts.test.js -t 'P-B-1[02]:'
+   Tests:       20 skipped, 4 passed, 24 total
+   exit=0
+   ```
+
 7. Add the security-manager and team-grant entries, the listing mark in `eachRepositoryRepos` and the grant check in `Teams.find()`, covering [P-B-4](#p-b-4)–[P-B-8](#p-b-8), [P-B-11](#p-b-11) · verify: `npx jest test/unit/lib/plugins/teams.test.js -t 'P-B-[56]:' && npx jest test/unit/lib/settings-cuts.test.js -t 'P-B-([478]|11):'`
+
+   ```text
+   $ npx jest test/unit/lib/plugins/teams.test.js -t 'P-B-[56]:' && npx jest test/unit/lib/settings-cuts.test.js -t 'P-B-([478]|11):'
+   Tests:       1 skipped, 3 passed, 4 total
+   Tests:       15 skipped, 9 passed, 24 total
+   exit=0
+   ```
+
 8. Make the Diffable and Repository NOP paths wait for their pending calls, fix the two disable rows' arguments, and end a NOP run without `payload.check_run` before the PR comment and check-run update, covering [P-B-9](#p-b-9) · verify: `npx jest test/unit/lib/settings-cuts.test.js -t 'P-B-9:'`
+
+   ```text
+   $ npx jest test/unit/lib/settings-cuts.test.js -t 'P-B-9:'
+   Tests:       17 skipped, 7 passed, 24 total
+   exit=0
+   ```
+
 9. Add the removals-only collaborators mode and use it in `syncArchivedRepo`, covering [P-B-13](#p-b-13)–[P-B-15](#p-b-15) · verify: `npx jest test/unit/lib/settings-cuts.test.js -t 'P-B-1[34]:' && npx jest test/unit/lib/plugins/collaborators.test.js && git diff --exit-code origin/main -- test/unit/lib/plugins/collaborators.test.js`
+
+   ```text
+   $ npx jest test/unit/lib/settings-cuts.test.js -t 'P-B-1[34]:' && npx jest test/unit/lib/plugins/collaborators.test.js && git diff --exit-code origin/main -- test/unit/lib/plugins/collaborators.test.js
+   Tests:       21 skipped, 3 passed, 24 total
+   Tests:       12 passed, 12 total
+   exit=0   # collaborators.test.js unchanged against origin/main
+   ```
+
 10. Add the cuts to TOMTOM.md's patch set, covering [P-B-16](#p-b-16) · verify: `grep -q 'runCache' TOMTOM.md`
+
+   ```text
+   $ grep -q 'runCache' TOMTOM.md && grep -c 'runCache' TOMTOM.md
+   2
+   exit=0
+   ```
+
 11. Run the slice's local checks · verify: `npm run test:unit && npx standard lib/runCache.js test/unit/helpers/github.js test/unit/lib/settings-cuts.test.js`
+
+   ```text
+   $ npm run test:unit && npx standard lib/runCache.js test/unit/helpers/github.js test/unit/lib/settings-cuts.test.js
+   Test Suites: 1 skipped, 21 passed, 21 of 22 total
+   Tests:       11 skipped, 199 passed, 210 total
+   exit=0   # standard clean
+   ```
+
 12. Push the slice to [tomtom-forks/safe-settings#29](https://github.com/tomtom-forks/safe-settings/pull/29) and see CI pass on Node 18 and 20 (leaves the machine) · verify: `[ "$(gh pr view 29 -R tomtom-forks/safe-settings --json headRefOid --jq .headRefOid)" = "$(git rev-parse HEAD)" ] && gh pr checks 29 -R tomtom-forks/safe-settings`
+
+   ```text
+   $ [ "$(gh pr view 29 -R tomtom-forks/safe-settings --json headRefOid --jq .headRefOid)" = "$(git rev-parse HEAD)" ] && gh pr checks 29 -R tomtom-forks/safe-settings
+   # HEAD b426632 = PR #29 head
+   test (18)	pass	18s	https://github.com/tomtom-forks/safe-settings/actions/runs/45387686769/job/138422818382
+   test (20)	pass	22s	https://github.com/tomtom-forks/safe-settings/actions/runs/45387686769/job/138422818840
+   exit=0
+   ```
+
 13. Tag the PR head `2.1.18-tomtom-rc.10-pre.1`, a dev pre-release as `rc.9-pre.1` was, then build and lock its image with the deployment repo's OPERATIONS.md §3 and record the digest in plan.md (needs the user: signed tag, registry login) · verify: `git fetch -q origin --tags && git diff --quiet 2.1.18-tomtom-rc.10-pre.1 HEAD -- index.js lib && grep -qE 'rc\.10-pre\.1.*sha256:[0-9a-f]{12}' docs/sdlc/changes/2026-11-23-cron-sync-quota/plan.md`
 14. Roll dev to that image: a deployment-repo PR with `image.tag` and the §4 row, merged, then Argo CD Refresh, an APP DIFF of only the image, and Sync (needs the user: merge, Argo CD, and the dev kubeconfig and namespace from the guide's verify block as `KUBECONFIG` and `NS`) · verify: `kubectl -n "$NS" rollout status deploy/safe-settings-deployment --timeout=5m && kubectl -n "$NS" get deploy/safe-settings-deployment -o jsonpath='{.spec.template.spec.containers[0].image}' | grep -q ':2.1.18-tomtom-rc.10-pre.1$'`
 15. Count one dev pod's next hourly tick per endpoint with the team's Loki guide, and record `Dev tick after slice 1: charged=<n> writes=<n>` and its table in plan.md, covering [P-B-50](#p-b-50) (needs the user's Loki access) · verify: `grep -oE 'Dev tick after slice 1: charged=[0-9]+ writes=[0-9]+' docs/sdlc/changes/2026-11-23-cron-sync-quota/plan.md | awk -F'[= ]' '{ok = ($7 <= 750 && $9 <= 30)} END {exit !ok}'`
