@@ -66,8 +66,10 @@ function fakeGitHub () {
   return {
     calls,
     // on('GET', '/repos/o/r', [200, body, headers]) or on(..., call => [status, body, headers])
+    // A route registered later answers before an earlier one for the same request, so a test can
+    // set up the common case and then override one answer.
     on (method, path, reply) {
-      routes.push({ method, path, reply })
+      routes.unshift({ method, path, reply })
       return this
     },
     // { 'GET /repos/o/r': 1, ... } over every request made so far, query strings left out

@@ -241,6 +241,66 @@ describe('slice 1: whole runs of the real Settings', () => {
     })
   })
 
+  describe('P-B-9: the NOP rows that name an endpoint', () => {
+    it('P-B-9: disabling alerts and security updates are rows of their repo, with their endpoint', async () => {
+      installationRepos(gh, [{ name: 'r' }])
+      gh.on('GET', '/repos/o/r', [200, repoBody('r', { description: 'old' })])
+      gh.on('GET', '/repos/o/r/vulnerability-alerts', [204])
+      const config = {
+        restrictedRepos,
+        repository: { topics: [], description: 'new', security: { enableVulnerabilityAlerts: false, enableAutomatedSecurityFixes: false } }
+      }
+      const { settings, done } = run({ config, nop: true })
+      await done
+
+      expect(gh.writes()).toEqual([])
+      const rows = settings.results.filter(row => row.endpoint)
+      expect(rows.map(row => [row.plugin, row.repo, row.endpoint.replace('https://api.github.com', '')]).sort()).toEqual([
+        ['Repository', 'r', '/repos/o/r'],
+        ['Repository', 'r', '/repos/o/r/automated-security-fixes'],
+        ['Repository', 'r', '/repos/o/r/vulnerability-alerts']
+      ])
+    })
+
+    it('P-B-9: a dry run waits for its pending changes: a rejection reaches the plugin that made it, not the process', async () => {
+      installationRepos(gh, [{ name: 'r' }])
+      gh.on('GET', '/repos/o/r/teams', [200, [{ id: 2, slug: 'orgrole', name: 'orgrole', permission: 'pull' }]])
+      gh.on('GET', '/orgs/o/security-managers', [200, []])
+      gh.on('GET', '/orgs/o/teams/orgrole/repos', grantList(['r']))
+      const unhandled = jest.fn()
+      process.on('unhandledRejection', unhandled)
+      const { settings, done } = run({ config: teamsOnly, nop: true })
+      const remove = jest.spyOn(require('../../../lib/plugins/teams').prototype, 'remove')
+        .mockImplementation(() => Promise.reject(new Error('boom')))
+      try {
+        await done
+        await new Promise(resolve => setImmediate(resolve))
+      } finally {
+        remove.mockRestore()
+        process.removeListener('unhandledRejection', unhandled)
+      }
+
+      expect(unhandled).not.toHaveBeenCalled()
+      expect(settings.results.filter(row => row.type === 'ERROR').map(row => row.plugin)).toEqual(['Teams'])
+    })
+
+    it('P-B-9: a NOP run without a check run ends without a PR comment or a check-run update', async () => {
+      installationRepos(gh, [{ name: 'r' }])
+      gh.on('GET', '/repos/o/r/teams', [200, []])
+      gh.on('GET', '/orgs/o/security-managers', [200, []])
+      gh.on('PUT', '/orgs/o/teams/keep/repos/o/r', [204])
+      gh.on('GET', '/orgs/o/teams/keep', [200, { id: 1, slug: 'keep' }])
+      const { settings, done } = run({ config: teamsOnly, nop: true })
+      await done
+      const before = gh.calls.length
+
+      await settings.handleResults()
+
+      expect(gh.calls.length).toBe(before)
+      expect(gh.writes()).toEqual([])
+    })
+  })
+
   describe('one repo read per run', () => {
     it('P-B-10: three repos (settings and labels, branches, only teams) cost two repo reads in all', async () => {
       installationRepos(gh, [{ name: 'a' }, { name: 'b' }, { name: 'c' }])
