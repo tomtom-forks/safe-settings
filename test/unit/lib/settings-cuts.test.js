@@ -324,6 +324,68 @@ describe('slice 1: whole runs of the real Settings', () => {
       ])
     })
 
+    describe('P-B-9: what a PR dry run shows for a row that is a text message', () => {
+      const alertsOnly = { restrictedRepos, repository: { topics: [], security: { enableVulnerabilityAlerts: true } } }
+      const prPayload = {
+        check_run: { id: 5, check_suite: { pull_requests: [{ number: 7 }] } },
+        repository: { owner: { login: 'o' }, name: 'admin' }
+      }
+
+      // Runs a dry run with a check run, and returns what it wrote to the check run and to the PR
+      async function dryRun (config) {
+        let checkRun
+        let comment
+        gh.on('PATCH', '/repos/o/admin/check-runs/5', call => { checkRun = call.body; return [200, {}] })
+        gh.on('POST', '/repos/o/admin/issues/7/comments', call => { comment = call.body; return [201, {}] })
+        const { settings } = newSettings({ octokit, config, nop: true, payload: prPayload })
+        await settings.updateAll()
+        await settings.handleResults()
+        return { settings, summary: checkRun.output.summary, comment: comment.body }
+      }
+
+      // r1 matches its config, r2 differs only in its Dependabot alerts
+      function alertRepos () {
+        installationRepos(gh, [{ name: 'r1' }, { name: 'r2' }])
+        gh.on('GET', '/repos/o/r1', [200, repoBody('r1')])
+        gh.on('GET', '/repos/o/r2', [200, repoBody('r2')])
+        gh.on('GET', '/repos/o/r1/vulnerability-alerts', [204])
+        gh.on('GET', '/repos/o/r2/vulnerability-alerts', [404, { message: 'Vulnerability alerts are disabled.' }])
+      }
+
+      it('P-B-9: the check-run summary shows a repo whose only difference is its alert state, in its Repository column, and nothing for the matching repo', async () => {
+        alertRepos()
+        const { summary } = await dryRun(alertsOnly)
+
+        const [header, , r2Row] = summary.split('\n').filter(line => line.startsWith('|'))
+        expect(header.split('|').map(cell => cell.trim()).filter(Boolean).sort()).toEqual(['Repo', 'Repository settings'])
+        expect(r2Row.split('|').map(cell => cell.trim()).filter(Boolean)).toEqual(['r2', ':hand:'])
+        expect(summary).not.toMatch(/\br1\b/)
+      })
+
+      it('P-B-9: the PR comment names the alert change of that repo, and nothing for the matching repo', async () => {
+        alertRepos()
+        const { comment } = await dryRun(alertsOnly)
+
+        expect(comment).toMatch(/<td> "r2" <\/td>/)
+        expect(comment).toMatch(/Enabling Dependabot alerts/)
+        expect(comment).not.toMatch(/<td> "r1" <\/td>/)
+      })
+
+      it('P-B-9: a text row that names no endpoint (the repo to create is skipped without force_create) stays out of the summary and the comment', async () => {
+        installationRepos(gh, [{ name: 'r' }])
+        gh.on('GET', '/repos/o/r', [404, { message: 'Not Found' }])
+        const config = { restrictedRepos, repository: { topics: [], description: 'new' } }
+        const { settings, summary, comment } = await dryRun(config)
+
+        // The row exists: it is a text message that names no endpoint
+        expect(settings.results.map(row => [row.plugin, row.endpoint, row.action.msg])).toEqual([['Repository', '', 'Force_create is false. Skipping repo creation']])
+        expect(summary).toMatch(/Number of repos that were considered: `1 `/)
+        expect(summary).not.toMatch(/Repository settings/)
+        expect(comment).not.toMatch(/Force_create/)
+        expect(comment).not.toMatch(/<td> "r" <\/td>/)
+      })
+    })
+
     it('P-B-9: a dry run waits for its pending changes: a rejection reaches the plugin that made it, not the process', async () => {
       installationRepos(gh, [{ name: 'r' }])
       gh.on('GET', '/repos/o/r/teams', [200, [{ id: 2, slug: 'orgrole', name: 'orgrole', permission: 'pull' }]])
