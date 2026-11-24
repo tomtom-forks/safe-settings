@@ -35,3 +35,76 @@ function api () {
 }
 
 module.exports = { API, createOctokit, recordRequests, api }
+
+// A fake GitHub for whole-run tests. Routes answer by method and path; every
+// request is recorded, and a request without a route answers 418 and shows in
+// the counts, so a test that lists the requests it expects fails on any extra.
+function fakeGitHub () {
+  const routes = []
+  const calls = []
+  const METHODS = ['get', 'put', 'post', 'patch', 'delete']
+
+  const handle = method => function (uri, body) {
+    const [path, qs] = uri.split('?')
+    const query = Object.fromEntries(new URLSearchParams(qs || ''))
+    const call = { method, path, query, body }
+    calls.push(call)
+    const route = routes.find(r => r.method === method && (r.path instanceof RegExp ? r.path.test(path) : r.path === path))
+    if (!route) {
+      return [418, { message: `no route in the test for ${method} ${path}` }]
+    }
+    const answer = typeof route.reply === 'function' ? route.reply(call) : route.reply
+    const [status, payload, headers] = answer
+    return [status, payload === undefined ? '' : payload, { 'content-type': 'application/json', ...headers }]
+  }
+
+  const scope = nock(API).persist()
+  for (const method of METHODS) {
+    scope.intercept(/.*/, method.toUpperCase()).reply(handle(method.toUpperCase()))
+  }
+
+  return {
+    calls,
+    // on('GET', '/repos/o/r', [200, body, headers]) or on(..., call => [status, body, headers])
+    on (method, path, reply) {
+      routes.push({ method, path, reply })
+      return this
+    },
+    // { 'GET /repos/o/r': 1, ... } over every request made so far, query strings left out
+    counts () {
+      const counts = {}
+      for (const { method, path } of calls) {
+        counts[`${method} ${path}`] = (counts[`${method} ${path}`] || 0) + 1
+      }
+      return counts
+    },
+    writes () {
+      return calls.filter(c => c.method !== 'GET')
+    }
+  }
+}
+
+// A Settings instance on a client, with the config files already loaded
+// (as the existing archived-transport test does), ready for updateAll() or updateRepos().
+function newSettings ({ config, nop = false, octokit, subOrgConfigs = {}, repoConfigs = {} }) {
+  const Settings = require('../../../lib/settings')
+  const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  const admin = { owner: 'o', repo: 'admin' }
+  const context = { payload: { installation: { id: 1 } }, octokit, log, repo: () => admin }
+  const settings = new Settings(nop, context, admin, config, 'main')
+  settings.subOrgConfigs = subOrgConfigs
+  settings.repoConfigs = repoConfigs
+  return { settings, log }
+}
+
+// GET /installation/repositories, one page
+function installationRepos (gh, repos) {
+  gh.on('GET', '/installation/repositories', [200, {
+    total_count: repos.length,
+    repositories: repos.map(({ name, archived = false }) => ({ name, archived, owner: { login: 'o' } }))
+  }])
+}
+
+module.exports.fakeGitHub = fakeGitHub
+module.exports.newSettings = newSettings
+module.exports.installationRepos = installationRepos
