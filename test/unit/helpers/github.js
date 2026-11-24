@@ -88,11 +88,11 @@ function fakeGitHub () {
 
 // A Settings instance on a client, with the config files already loaded
 // (as the existing archived-transport test does), ready for updateAll() or updateRepos().
-function newSettings ({ config, nop = false, octokit, subOrgConfigs = {}, repoConfigs = {} }) {
+function newSettings ({ config, nop = false, octokit, subOrgConfigs = {}, repoConfigs = {}, payload = {} }) {
   const Settings = require('../../../lib/settings')
   const log = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const admin = { owner: 'o', repo: 'admin' }
-  const context = { payload: { installation: { id: 1 } }, octokit, log, repo: () => admin }
+  const context = { payload: { installation: { id: 1 }, ...payload }, octokit, log, repo: () => admin }
   const settings = new Settings(nop, context, admin, config, 'main')
   settings.subOrgConfigs = subOrgConfigs
   settings.repoConfigs = repoConfigs

@@ -95,6 +95,29 @@ describe('slice 1: whole runs of the real Settings', () => {
         'DELETE /orgs/o/teams/orgrole/repos/o/r1': 1
       })
     })
+
+    it('P-B-6: when the grant list cannot be read, the run checks the team per repo, once for each, and removes only the grant that exists', async () => {
+      installationRepos(gh, [{ name: 'r1' }, { name: 'r2' }])
+      teamLists(['r1', 'r2'])
+      gh.on('GET', '/orgs/o/security-managers', [200, []])
+      gh.on('GET', '/orgs/o/teams/orgrole/repos', [403, { message: 'Resource not accessible by integration' }])
+      gh.on('GET', '/orgs/o/teams/orgrole/repos/o/r1', [204])
+      gh.on('GET', '/orgs/o/teams/orgrole/repos/o/r2', [404, { message: 'Not Found' }])
+      gh.on('DELETE', /^\/orgs\/o\/teams\/orgrole\/repos\/o\/r[12]$/, [204])
+
+      await run({ config: teamsOnly }).done
+
+      expect(gh.counts()).toEqual({
+        'GET /installation/repositories': 1,
+        'GET /repos/o/r1/teams': 1,
+        'GET /repos/o/r2/teams': 1,
+        'GET /orgs/o/security-managers': 1,
+        'GET /orgs/o/teams/orgrole/repos': 1,
+        'GET /orgs/o/teams/orgrole/repos/o/r1': 1,
+        'GET /orgs/o/teams/orgrole/repos/o/r2': 1,
+        'DELETE /orgs/o/teams/orgrole/repos/o/r1': 1
+      })
+    })
   })
 
   describe('P-B-7: the grant list is read once per run', () => {
@@ -238,6 +261,45 @@ describe('slice 1: whole runs of the real Settings', () => {
         expect(endpointOf('Repository')).toMatch(/\/repos\/o\/r2\/vulnerability-alerts$/)
         expect(endpointOf('Teams')).toMatch(/\/orgs\/o\/teams\/orgrole\/repos\/o\/r2$/)
       })
+
+      it('P-B-9: the check-run update of a dry run names r2 and its plugins, nothing for the unchanged r1, and no collaborators for the archived r3', async () => {
+        twoRepos()
+        installationRepos(gh, [{ name: 'r1' }, { name: 'r2' }, { name: 'r3', archived: true }])
+        // r3 is archived, lists a team that it holds and a collaborator it does not have: both only add, so neither is a row
+        gh.on('GET', '/repos/o/r3/teams', [200, [{ id: 1, slug: 'keep', name: 'keep', permission: 'push' }]])
+        gh.on('GET', '/repos/o/r3/collaborators', [200, []])
+        gh.on('GET', '/repos/o/r3/invitations', [200, []])
+        gh.on('GET', /^\/orgs\/o\/memberships\/[a-z]+$/, [200, { state: 'active' }])
+        gh.on('POST', '/repos/o/admin/issues/7/comments', [201, {}])
+        let checkRun
+        gh.on('PATCH', '/repos/o/admin/check-runs/5', call => { checkRun = call.body; return [200, {}] })
+        const payload = {
+          check_run: { id: 5, check_suite: { pull_requests: [{ number: 7 }] } },
+          repository: { owner: { login: 'o' }, name: 'admin' }
+        }
+        // r2 also differs in a repo setting, so its Repository plugin has a change to show
+        const repoConfigs = {
+          'r2.yml': { repository: { description: 'new' } },
+          'r3.yml': { collaborators: [{ username: 'alice', permission: 'push' }] }
+        }
+        const { settings } = newSettings({ octokit, config: fullConfig, nop: true, payload, repoConfigs })
+
+        await settings.updateAll()
+        await settings.handleResults()
+
+        expect(gh.writes().map(c => `${c.method} ${c.path}`).sort()).toEqual([
+          'PATCH /repos/o/admin/check-runs/5',
+          'POST /repos/o/admin/issues/7/comments'
+        ])
+        const summary = checkRun.output.summary
+        const [header, , r2Row] = summary.split('\n').filter(line => line.startsWith('|'))
+        expect(header.split('|').map(cell => cell.trim()).filter(Boolean).sort()).toEqual(['Branches settings', 'Repo', 'Repository settings', 'Teams settings'])
+        expect(r2Row.split('|').map(cell => cell.trim()).filter(Boolean)).toEqual(['r2', ':hand:', ':hand:', ':hand:'])
+        expect(summary).not.toMatch(/\br1\b/)
+        expect(summary).not.toMatch(/\br3\b/)
+        expect(summary).not.toMatch(/Collaborators/)
+        expect(checkRun.conclusion).toBe('success')
+      })
     })
   })
 
@@ -328,7 +390,8 @@ describe('slice 1: whole runs of the real Settings', () => {
       ['P-B-12: a rename of the default branch', trunk => {
         gh.on('GET', '/repos/o/r/branches/trunk', [404, { message: 'Branch not found' }])
         gh.on('POST', '/repos/o/r/branches/main/rename', [201, { name: 'trunk' }])
-        gh.on('PATCH', '/repos/o/r', call => [200, repoBody('r', { default_branch: call.body.default_branch || 'main' })])
+        // The PATCH after the rename answers 422, so only the rename itself can tell the run the new name
+        gh.on('PATCH', '/repos/o/r', [422, { message: 'Validation Failed' }])
       }],
       ['P-B-12: a PATCH of the default branch', trunk => {
         gh.on('GET', '/repos/o/r/branches/trunk', [200, { name: 'trunk' }])
@@ -353,6 +416,25 @@ describe('slice 1: whole runs of the real Settings', () => {
       expect(counts['GET /repos/o/r/branches/trunk/protection']).toBe(1)
       expect(counts['PUT /repos/o/r/branches/trunk/protection']).toBe(1)
       expect(Object.keys(counts).filter(k => k.includes('/branches/main/protection'))).toEqual([])
+    })
+  })
+
+  describe('P-B-12: a repo entry after an archive change', () => {
+    it('P-B-12: an archived repo whose config says archived: false costs one repo read and one PATCH; the repository plugin then compares against the PATCH answer', async () => {
+      installationRepos(gh, [{ name: 'r', archived: true }])
+      gh.on('GET', '/repos/o/r', [200, repoBody('r', { archived: true, description: 'old' })])
+      // The unarchive answers with the repo as it is now, and that already has the configured description
+      gh.on('PATCH', '/repos/o/r', call => [200, repoBody('r', { archived: call.body.archived, description: 'new' })])
+      const config = { restrictedRepos, repository: { topics: [], archived: false, description: 'new' } }
+
+      await run({ config }).done
+
+      expect(gh.counts()).toEqual({
+        'GET /installation/repositories': 1,
+        'GET /repos/o/r': 1,
+        'PATCH /repos/o/r': 1
+      })
+      expect(gh.writes().map(c => c.body)).toEqual([{ archived: false }])
     })
   })
 
