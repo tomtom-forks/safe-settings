@@ -13,6 +13,7 @@
 
 **Plugin version:** 0.7.11
 **Agent Sessions:** claude-code: 8c373795-83b8-40b9-ac04-0d0f08d44165
+**Agent Sessions:** claude-code: e47eb7bc-35d5-425d-8a02-8ea64a77c2a7
 
 ---
 
@@ -344,7 +345,7 @@ flowchart TD
 
 | Slice | Name | Delivers | Seams | Behaviours | Status |
 |-------|------|----------|-------|------------|--------|
-| 1 | Stop writes that change nothing | Syncs stop writes that change nothing and read each repo once; one dev tick drops to at most 750 requests ([G1](change-design.md#g1), [G2](change-design.md#g2), [G3](change-design.md#g3), [G6-AC1](change-design.md#g6-ac1), [G6-AC3](change-design.md#g6-ac3)) | `lib/runCache.js`; the plugins diffable, branches, repository, teams, collaborators, archive and labels; settings.js archived collaborators mode, listing mark and NOP path without a check run; `test/unit/helpers/github.js`; a TOMTOM.md row | [P-B-1](#p-b-1)–[P-B-16](#p-b-16), [P-B-50](#p-b-50), [P-B-51](#p-b-51) | todo |
+| 1 | Stop writes that change nothing | Syncs stop writes that change nothing and read each repo once; one dev tick drops to at most 750 requests ([G1](change-design.md#g1), [G2](change-design.md#g2), [G3](change-design.md#g3), [G6-AC1](change-design.md#g6-ac1), [G6-AC3](change-design.md#g6-ac3)) | `lib/runCache.js`; the plugins diffable, branches, repository, teams, collaborators, archive and labels; settings.js archived collaborators mode, listing mark and NOP path without a check run; `test/unit/helpers/github.js`; a TOMTOM.md row | [P-B-1](#p-b-1)–[P-B-16](#p-b-16), [P-B-50](#p-b-50), [P-B-51](#p-b-51) | wip |
 | 2 | Paced org-wide runs | Org-wide runs wait at the 5,000 floor, so webhooks keep their share, and their check runs go on the commit that started them, or nowhere ([G4](change-design.md#g4), [G5-AC5](change-design.md#g5-ac5)–[G5-AC7](change-design.md#g5-ac7)) | `lib/quotaGuard.js`; env.js; index.js guard, start check, check-run target and paced note; full-sync.js's paced call; settings.js guard per repo and check-run placement; `test/unit/helpers/robot.js`; TOMTOM.md knob and markers | [P-B-17](#p-b-17)–[P-B-31](#p-b-31) | unplanned |
 | 3 | Long runs follow their branch | A long run that writes picks up config merges, a superseded PR dry run stops, and a failed suborg directory read stops the run ([G8](change-design.md#g8), [G9](change-design.md#g9), [G5-AC9](change-design.md#g5-ac9)) | `Settings.BranchHead`; index.js branch baseline and reload loader; settings.js branch check, reload or stop, loadConfigMap; TOMTOM.md markers | [P-B-32](#p-b-32)–[P-B-40](#p-b-40), [P-B-52](#p-b-52) | unplanned |
 | 4 | Nightly CronJob on dev | Dev runs one paced full sync a night as `safe-settings-full-sync`, which reports whether it reached every repo, and the docs say how to check, start and pause it ([G5-AC1](change-design.md#g5-ac1)–[G5-AC4](change-design.md#g5-ac4), [G5-AC8](change-design.md#g5-ac8), [G6-AC2](change-design.md#g6-ac2), [G7](change-design.md#g7)) | `full-sync.js` report and exit; Dockerfile; nopcommand.js; settings.js listed/visited, lookup, config and listing flags, complete flag, `repos=`, `NOP_CHANGE`, per-repo error rows; the archive and rename NOP rows; the dev chart's `cronjob.yaml` and values; OPERATIONS.md and README; TOMTOM.md markers and CRON note | [P-B-41](#p-b-41)–[P-B-49](#p-b-49), [P-B-53](#p-b-53) | unplanned |
