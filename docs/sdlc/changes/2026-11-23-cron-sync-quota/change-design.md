@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-23
 **Artifact:** change-design
-**Status:** Draft
+**Status:** Approved
 **Template version:** default/0.3.2
 **References:** prod values `apps/safe-settings-prod/values.yaml` in tomtom-internal/safe-settings-deployment (`CRON: ""` and the estimate behind it) · [tomtom-forks/safe-settings#26](https://github.com/tomtom-forks/safe-settings/pull/26) (rc.9: archived repos skipped) · cost model and its inputs in [`analysis/`](analysis/)
 
