@@ -8,7 +8,7 @@
 **References:** [tomtom-forks/safe-settings#29](https://github.com/tomtom-forks/safe-settings/pull/29) (the design PR) · cost model in [`analysis/`](analysis/) · tomtom-internal/safe-settings-deployment (dev chart, values, operations guide)
 **Strategy:** slices
 **Test command:** `npm run test:unit`
-**Status:** Draft
+**Status:** Approved
 **Template version:** default/0.3.3
 
 **Plugin version:** 0.7.11
