@@ -97,3 +97,65 @@ describe('Teams', () => {
     }
   })
 })
+
+describe('Teams grant check against a real client on nock', () => {
+  const nock = require('nock')
+  const { createOctokit, recordRequests, api } = require('../../helpers/github')
+
+  const log = { debug: jest.fn(), error: jest.fn(), info: jest.fn() }
+  const grantPath = '/orgs/o/teams/orgrole/repos/o/r'
+  let octokit
+  let requests
+
+  beforeAll(() => nock.disableNetConnect())
+  afterAll(() => nock.enableNetConnect())
+  beforeEach(() => {
+    octokit = createOctokit()
+    requests = recordRequests(octokit)
+    // The repo's team list shows a configured team and one that is not in the config
+    api().get('/repos/o/r/teams').query(true).reply(200, [
+      { id: 1, slug: 'keep', name: 'keep', permission: 'push' },
+      { id: 2, slug: 'orgrole', name: 'orgrole', permission: 'pull' }
+    ])
+    api().get('/orgs/o/security-managers').query(true).optionally().reply(404, { message: 'Not Found' })
+  })
+  afterEach(() => nock.cleanAll())
+
+  function sync () {
+    const plugin = new Teams(false, octokit, { owner: 'o', repo: 'r' }, [{ name: 'keep', permission: 'push' }], log, [])
+    return plugin.sync()
+  }
+
+  const deletes = () => requests.filter(r => r.method === 'DELETE')
+
+  it('P-B-5: a listed team outside the config with a repo-level grant (204) is deleted once', async () => {
+    const check = api().get(grantPath).reply(204)
+    api().delete(grantPath).reply(204)
+
+    await sync()
+
+    expect(check.isDone()).toBe(true)
+    expect(deletes()).toHaveLength(1)
+  })
+
+  it('P-B-5: a listed team outside the config without a repo-level grant (404) is not deleted', async () => {
+    const check = api().get(grantPath).reply(404, { message: 'Not Found' })
+    const del = api().delete(grantPath).reply(204)
+
+    await sync()
+
+    expect(check.isDone()).toBe(true)
+    expect(del.isDone()).toBe(false)
+    expect(deletes()).toEqual([])
+  })
+
+  it('P-B-6: a grant check that fails (403) leaves the DELETE as it is today', async () => {
+    const check = api().get(grantPath).reply(403, { message: 'Resource not accessible by integration' })
+    api().delete(grantPath).reply(204)
+
+    await sync()
+
+    expect(check.isDone()).toBe(true)
+    expect(deletes()).toHaveLength(1)
+  })
+})
