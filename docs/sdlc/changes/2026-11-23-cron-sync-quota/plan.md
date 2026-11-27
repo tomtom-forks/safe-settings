@@ -462,6 +462,14 @@ Slice 1 is worth merging alone: every sync, webhook or scheduled, drops about ha
    ```
 
 13. Tag the PR head `2.1.18-tomtom-rc.10-pre.1`, a dev pre-release as `rc.9-pre.1` was, then build and lock its image with the deployment repo's OPERATIONS.md §3 and record the digest in plan.md (needs the user: signed tag, registry login) · verify: `git fetch -q origin --tags && git diff --quiet 2.1.18-tomtom-rc.10-pre.1 HEAD -- index.js lib && grep -qE 'rc\.10-pre\.1.*sha256:[0-9a-f]{12}' docs/sdlc/changes/2026-11-23-cron-sync-quota/plan.md`
+
+   ```text
+   $ git fetch -q origin --tags && git diff --quiet 2.1.18-tomtom-rc.10-pre.1 HEAD -- index.js lib && grep -qE 'rc\.10-pre\.1.*sha256:[0-9a-f]{12}' docs/sdlc/changes/2026-11-23-cron-sync-quota/plan.md
+   # SSH-signed tag on c22ab44 = PR #29 head; image built 2026-11-27 with TOMTOM.md §6's build-image.sh (OPERATIONS.md §3 block)
+   2.1.18-tomtom-rc.10-pre.1 sha256:e54d6081c9212097fe5a1c9a7cb742139184ea2cec3ba9b98280cab19a3cbab2 locked: write=False delete=False read=True
+   exit=0
+   ```
+
 14. Roll dev to that image: a deployment-repo PR with `image.tag` and the §4 row, merged, then Argo CD Refresh, an APP DIFF of only the image, and Sync (needs the user: merge, Argo CD, and the dev kubeconfig and namespace from the guide's verify block as `KUBECONFIG` and `NS`) · verify: `kubectl -n "$NS" rollout status deploy/safe-settings-deployment --timeout=5m && kubectl -n "$NS" get deploy/safe-settings-deployment -o jsonpath='{.spec.template.spec.containers[0].image}' | grep -q ':2.1.18-tomtom-rc.10-pre.1$'`
 15. Count one dev pod's next hourly tick per endpoint with the team's Loki guide, and record `Dev tick after slice 1: charged=<n> writes=<n>` and its table in plan.md, covering [P-B-50](#p-b-50) (needs the user's Loki access) · verify: `grep -oE 'Dev tick after slice 1: charged=[0-9]+ writes=[0-9]+' docs/sdlc/changes/2026-11-23-cron-sync-quota/plan.md | awk -F'[= ]' '{ok = ($7 <= 750 && $9 <= 30)} END {exit !ok}'`
 16. Compare that tick per endpoint with the model's dev rows (708 and 17, plus the check run's 2 calls until slice 2), correct each row off by more than 5% or 2 calls, and record `Dev tick vs model: measured <charged>/<writes>, model 708/17, <k> rows corrected, prod night <the corrected model's prod total, as printed>.` with the table in plan.md, covering [P-B-51](#p-b-51) · verify: `cd docs/sdlc/changes/2026-11-23-cron-sync-quota && P=$(python3 analysis/tickmodel.py analysis/inputs/coverage-prod.json analysis/inputs/rates-prod.json --scheduled | grep -oE 'charged [0-9,]+' | tail -1 | cut -d' ' -f2) && grep -qE "Dev tick vs model: measured [0-9]+/[0-9]+, .*prod night $P\." plan.md && [ "$(printf '%s' "$P" | tr -d ,)" -le 40000 ]`
