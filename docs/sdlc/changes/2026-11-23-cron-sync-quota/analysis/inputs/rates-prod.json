@@ -1,0 +1,27 @@
+{
+ "name": "prod",
+ "org_rulesets": 7,
+ "prot_put": 1.0,
+ "teams_pages": 0.207,
+ "ghost_team_delete": 17561,
+ "real_team_delete": 8,
+ "team_put_per_run": 112,
+ "grant_list_pages": 34,
+ "archived_collab_put": 2710,
+ "repo_rulesets": 1120,
+ "ruleset_writes": 0.355,
+ "other_writes_per_run": 211,
+ "sources": {
+  "org_rulesets": "7 org rulesets read by the 2026-11-04 full syncs (Loki)",
+  "prot_put": "a real run PUTs every protected branch it reads: dev 160/160; prod 834 of 834 protection diffs in 24 h came from the four unflattened flags",
+  "teams_pages": "prod 2026-11-14..23: 874 follow-up pages / 4,215 team lists (Loki)",
+  "ghost_team_delete": "sum over 4 org-role teams of (teams-synced repos - repos whose config grants the team), coverage.js; the same formula gives dev's measured 88",
+  "real_team_delete": "1% of prod team DELETE pairs are other teams: ~8 a day",
+  "team_put_per_run": "prod 1,008 team PUTs in 9 days, one-off (7 of 139 pairs recurred in 3 days)",
+  "grant_list_pages": "23+1+1+1 pages for the 4 org-role teams (live GET 2026-11-23) + ~8 for real removals",
+  "archived_collab_put": "config entries on archived repos (upper bound); measured 1,238 distinct failing pairs in 10 days",
+  "repo_rulesets": "approximated by configured rulesets",
+  "ruleset_writes": "prod 147 writes / 798 lists = 0.184, divided by the 0.52 real-run share",
+  "other_writes_per_run": "prod 1,902 drift writes in 9 days, one-off (36 of 473 PATCHed repos recurred)"
+ }
+}

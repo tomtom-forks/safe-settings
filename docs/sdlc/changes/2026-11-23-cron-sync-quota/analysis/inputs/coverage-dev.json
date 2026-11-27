@@ -1,0 +1,37 @@
+{
+ "teamListed": {
+  "org-role team 1": 12
+ },
+ "teamsSynced": 100,
+ "org": "tomtomsptesting",
+ "repos": 209,
+ "restricted": 1,
+ "active": 160,
+ "archived": 48,
+ "archivedSynced": 4,
+ "activeWithSuborg": 104,
+ "activeWithRepoFile": 12,
+ "plugins": {
+  "branches": 160,
+  "autolinks": 20,
+  "teams": 96,
+  "validator": 12,
+  "rulesets": 5,
+  "environments": 1,
+  "labels": 6,
+  "collaborators": 1
+ },
+ "archivedPlugins": {
+  "teams": 4
+ },
+ "branchEntries": 160,
+ "rulesetEntries": 6,
+ "envEntries": 1,
+ "collabEntries": 2,
+ "archivedCollabEntries": 0,
+ "collabUsers": 2,
+ "collabUsersAll": 2,
+ "validationErrors": 0,
+ "suborgFiles": 7,
+ "repoFiles": 12
+}

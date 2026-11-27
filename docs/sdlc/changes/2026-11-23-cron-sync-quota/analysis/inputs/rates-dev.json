@@ -1,0 +1,18 @@
+{
+ "name": "dev",
+ "org_rulesets": 7,
+ "prot_put": 1.0,
+ "teams_pages": 0.25,
+ "ghost_team_delete": 88,
+ "real_team_delete": 0,
+ "team_put_per_run": 12,
+ "grant_list_pages": 2,
+ "archived_collab_put": 0,
+ "repo_rulesets": 5,
+ "ruleset_writes": 1.0,
+ "other_writes_per_run": 0,
+ "sources": {
+  "all": "dev tick 2026-11-23 12:00Z, one pod: 1,402 GitHub request lines (Loki)",
+  "grant_list_pages": "estimate: one org-role team on dev, 1-2 pages"
+ }
+}
